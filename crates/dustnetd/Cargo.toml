@@ -2,7 +2,7 @@
 name = "dustnetd"
 version = "0.2.0-alpha.1"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 description = "Static ATP server daemon: the runnable form of dustnet-server"
 repository.workspace = true
 readme = "README.md"

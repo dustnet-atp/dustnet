@@ -2,7 +2,7 @@
 name = "dustnet-core"
 version = "0.2.0-alpha.1"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 description = "ATP/AML protocol, parser, scanner, URI, origin, and session primitives"
 repository.workspace = true
 readme = "README.md"

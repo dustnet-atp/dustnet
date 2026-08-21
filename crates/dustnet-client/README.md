@@ -8,4 +8,4 @@ crate is built around bounded resource use: allocations on remote-influenced
 paths are admitted through a governor, and panicking operations are denied at
 the crate root.
 
-Licensed under MIT OR Apache-2.0.
+Licensed under MIT.

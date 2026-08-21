@@ -8,4 +8,4 @@ dustnet connect atp://host/   # connect to an ATP server
 dustnet check page.aml        # parse and validate
 ```
 
-Licensed under MIT OR Apache-2.0.
+Licensed under MIT.

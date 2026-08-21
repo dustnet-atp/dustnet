@@ -45,4 +45,4 @@ The mount keeps certificate pins between runs.
 what is supported. [CONTRIBUTING.md](CONTRIBUTING.md) covers building and
 testing.
 
-Licensed under either MIT or Apache-2.0, at your option.
+Licensed under [MIT](LICENSE-MIT).

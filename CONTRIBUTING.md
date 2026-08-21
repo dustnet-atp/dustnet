@@ -31,5 +31,4 @@ platform's gate covers.
 
 Security-sensitive changes need threat-model notes, and require the full gate
 to be re-run: a previous green run does not carry forward to changed code. By
-contributing, you agree that your contribution is licensed under MIT OR
-Apache-2.0.
+contributing, you agree that your contribution is licensed under MIT.

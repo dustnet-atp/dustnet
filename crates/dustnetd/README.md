@@ -7,4 +7,4 @@ dustnetd ./site --cert cert.pem --key key.pem
 dustnetd ./site --plaintext-loopback --port 1985
 ```
 
-Licensed under MIT OR Apache-2.0.
+Licensed under MIT.
