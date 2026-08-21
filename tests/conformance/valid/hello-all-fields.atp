@@ -1,0 +1,5 @@
+HELLO/0.2
+Terminal-Size: 80x24
+Color-Support: truecolor
+Client: Conformance/0.1
+Capabilities: live-updates,sessions,wasm-effects

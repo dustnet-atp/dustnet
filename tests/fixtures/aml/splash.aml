@@ -1,0 +1,17 @@
+[page mode=screen cols=80 rows=24 title="Dustnet Splash"]
+  [box x=10 y=2 w=60 h=12 border=double fg=cyan]
+    [text bold align=center fg=bright-cyan]
+      Dustnet
+    [/text]
+    [spacer lines=1 /]
+    [text align=center dim]A terminal-native network[/text]
+    [spacer lines=1 /]
+    [hr style=dash fg=cyan /]
+    [spacer lines=1 /]
+    [text align=center fg=white]v0.1.0 — Design Phase[/text]
+  [/box]
+
+  [box x=10 y=16 w=60 h=5 border=rounded fg=yellow]
+    [text align=center fg=bright-yellow]Press q to quit[/text]
+  [/box]
+[/page]

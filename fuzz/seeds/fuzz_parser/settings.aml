@@ -1,0 +1,113 @@
+[page mode=document title="Settings — Neon City"]
+  [heading level=1 fg=green]Settings[/heading]
+  [text dim]Toggle options to customize your experience[/text]
+  [hr style=dash fg=green /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-green]Appearance[/heading]
+
+  [panel id="theme" state="dark"]
+    [state name="dark" transition="dissolve" duration=200ms]
+      [box border=single fg=white w=40 h=3]
+        [text bold fg=white]Theme: Dark[/text]
+      [/box]
+    [/state]
+    [state name="light" transition="dissolve" duration=200ms]
+      [box border=single fg=black w=40 h=3]
+        [text bold]Theme: Light[/text]
+      [/box]
+    [/state]
+    [state name="amber" transition="dissolve" duration=200ms]
+      [box border=single fg=yellow w=40 h=3]
+        [text bold fg=yellow]Theme: Amber Phosphor[/text]
+      [/box]
+    [/state]
+    [state name="green" transition="dissolve" duration=200ms]
+      [box border=single fg=green w=40 h=3]
+        [text bold fg=green]Theme: Green Phosphor[/text]
+      [/box]
+    [/state]
+  [/panel]
+
+  [button action="toggle" target="theme" states="dark,light,amber,green"]
+    Cycle Theme
+  [/button]
+
+  [spacer lines=1 /]
+  [hr style=dot fg=green /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-green]Notifications[/heading]
+
+  [panel id="notif" state="on"]
+    [state name="on" transition="fade" duration=150ms]
+      [text]Bell notifications: [text bold fg=green]ON[/text][/text]
+    [/state]
+    [state name="off" transition="fade" duration=150ms]
+      [text]Bell notifications: [text fg=red]OFF[/text][/text]
+    [/state]
+  [/panel]
+
+  [button action="toggle" target="notif" states="on,off"]
+    Toggle Notifications
+  [/button]
+
+  [spacer lines=1 /]
+  [hr style=dot fg=green /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-green]Animation[/heading]
+
+  [panel id="anim" state="on"]
+    [state name="on" transition="fade" duration=150ms]
+      [text]Animations: [text bold fg=green]Enabled[/text][/text]
+      [spacer lines=1 /]
+      [animate id="demo" fps=3 loop=true]
+        [frame][pre fg=green]  (( ●○○ ))[/pre][/frame]
+        [frame][pre fg=green]  (( ○●○ ))[/pre][/frame]
+        [frame][pre fg=green]  (( ○○● ))[/pre][/frame]
+        [frame][pre fg=green]  (( ○●○ ))[/pre][/frame]
+      [/animate]
+    [/state]
+    [state name="off" transition="fade" duration=150ms]
+      [text]Animations: [text fg=red]Disabled[/text][/text]
+      [text dim]  (page will be static)[/text]
+    [/state]
+  [/panel]
+
+  [button action="toggle" target="anim" states="on,off"]
+    Toggle Animations
+  [/button]
+
+  [spacer lines=1 /]
+  [hr style=dot fg=green /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-green]System Info[/heading]
+
+  [panel id="sysinfo" state="hidden"]
+    [state name="hidden" transition="slide-down" duration=200ms]
+      [text dim]> System details (click to expand)[/text]
+    [/state]
+    [state name="shown" transition="slide-up" duration=200ms]
+      [text dim]v System details[/text]
+      [box border=single fg=cyan]
+        [text]Protocol:  ATP 1.0[/text]
+        [text]Client:    Dustnet v0.1[/text]
+        [text]Transport: TCP (plaintext)[/text]
+        [text]Server:    127.0.0.1:1985[/text]
+      [/box]
+    [/state]
+  [/panel]
+
+  [button action="toggle" target="sysinfo" states="hidden,shown"]
+    Toggle System Info
+  [/button]
+
+  [spacer lines=1 /]
+  [hr style=heavy fg=green /]
+
+  [link href="/" transition="slide-down" transition_duration_ms=250]
+    [text fg=cyan]← Back to directory[/text]
+  [/link]
+[/page]

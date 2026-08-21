@@ -1,0 +1,29 @@
+[page mode=document title="WASM effects"]
+
+  [heading level=1 fg=bright-cyan]WASM effects[/heading]
+  [link href="/"][text dim]< back to index[/text][/link]
+  [spacer lines=1 /]
+
+  [text]An effect is a WebAssembly module the site serves alongside its pages.
+  The client runs it in a sandbox with a fuel budget and a memory cap, and with
+  no imports beyond drawing: it cannot read files, open sockets, or reach the
+  page it is drawing on.[/text]
+  [spacer lines=1 /]
+
+  [box border=rounded fg=yellow title="Build the modules first"]
+    [text]This page references [text bold]/effects/*.wasm[/text]. Run
+    [text bold]make effects[/text] in the dustnet repository and copy the
+    modules you want beside this page. A missing module degrades to a static
+    page rather than failing the load.[/text]
+  [/box]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Full-region background[/heading]
+  [animate background=true id="backdrop" src="/effects/starfield.wasm" fps=20 loop=true /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Bounded region[/heading]
+  [box w=48 h=8 border=single fg=white title="static_noise"]
+    [animate id="noise" src="/effects/static_noise.wasm" fps=12 loop=true /]
+  [/box]
+[/page]

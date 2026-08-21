@@ -1,0 +1,3 @@
+Set-Session: opaque-token
+
+[page][text]with session[/text][/page]

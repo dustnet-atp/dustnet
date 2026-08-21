@@ -1,0 +1,245 @@
+# Changelog
+
+## 0.2.0-alpha.1 - Unreleased
+
+### Breaking
+
+- Added `PING` (`0x06`) and `PONG` (`0x87`) to the ATP message set. Both carry
+  an empty body, are legal while a request is outstanding, and are not
+  capability-gated. The protocol version stays `0.2`: these are core messages in
+  a specification that has not shipped, not extensions to one that has, so they
+  occupy the core code ranges rather than the reserved extension ranges
+  described under Extensibility in `docs/spec/02-protocol.md`. A peer built against
+  an earlier `0.2` will reject them, which is why this is recorded as breaking.
+- Removed the root façade crate and the `dustnet serve` command. Dustnet is now
+  a five-package virtual workspace: import `dustnet_core`, `dustnet_client` or
+  `dustnet_server` directly, and replace `dustnet serve ...` with `dustnetd
+  <site-directory> --cert ... --key ...`. Plaintext development serving requires
+  `--plaintext-loopback` and cannot bind a non-loopback address.
+- The supported server is static and plugin-free. Authentication, boards, chat,
+  email, links, statistics and custom handlers moved to
+  `examples/unsupported-social` and are excluded from production builds.
+  Construct servers through `StaticServerConfig::bind_tls` or
+  `StaticServerConfig::bind_plaintext_loopback`, then pass the configuration to
+  `StaticServer::new`.
+- `Origin` is the site key. It carries canonical host, explicit port and
+  transport security; string host keys are not compatible.
+- Removed the public raw client and all self-scoping compatibility APIs. Viewer
+  lifecycle identities are opaque, reducer-issued values. `dustnet_client::Client`,
+  the public `client` module, direct transport response types, the self-scoping
+  fetch/submit/subscription/resource helpers and the animation network
+  constructor were removed without replacement: the supported high-level network
+  entry point is `run_connected_viewer`, and local rendering continues through
+  `run_viewer` with explicit local assets. Drive async client/viewer integrations
+  through `ViewerModel::reduce` and its `ViewerEvent`/`ViewerEffect` contract.
+- `AtpUri` fields are read-only through accessors; duplication uses the fallible
+  `AtpUri::try_clone`.
+- Concrete animation adapters take owned identifiers and payloads; WASM adapter
+  construction is fallible via `WasmAnimationAdapter::try_new`.
+- Several error payloads changed shape as part of making diagnostics
+  allocation-free (`ColorParseError` syntax variants are payload-free; dynamic
+  protocol error payloads expose `Cow<'static, str>`).
+- `CellBuffer::diff` returns `Option<Vec<(u16, u16)>>`. It counts the differing
+  cells before recording any, so its result is allocated once at its final size
+  and an allocator refusal is reported rather than aborting.
+
+### Added
+
+- The plugin-free static `dustnetd` production server.
+- Typed origins carrying canonical host, explicit port, and transport security,
+  with sessions and resources partitioned by security context.
+- Explicit ATP/AML 0.2 capability negotiation.
+- `--max-connections` and `--max-connections-per-ip` on `dustnetd`, with
+  `StaticServerConfig::with_connection_limits` promoted to public API. The right
+  ceiling depends on the operator's `RLIMIT_NOFILE`, which the process cannot
+  raise for itself under `forbid(unsafe_code)`; the requirement is documented in
+  `docs/guides/production-support.md` and the effective ceilings are logged at startup.
+- Server logging for the connection lifecycle. Accepting, closing, handshake
+  failures and handshake timeouts are logged for every connection rather than
+  only for failing ones, so the log answers "is anyone connected?" and not just
+  "why can nobody connect?". Per-request detail — the negotiated version and
+  capabilities, each GET and its 404s, SUBSCRIBE and UNSUBSCRIBE — sits at
+  `debug`, which keeps `make serve` readable while making `RUST_LOG=debug`
+  worth turning on.
+- `StaticServer::subscription_memory`, reporting retained live-region bytes
+  against the server-wide ceiling. Budget exhaustion presents to a user as a
+  live region that quietly stops updating; every refusal is now logged and the
+  pressure is observable before it becomes one.
+- A viewer keepalive. The client sends `PING` every 10 seconds against the
+  server's 30-second idle deadline, so a reader who is not clicking keeps one
+  connection instead of being disconnected and redialling TLS roughly twice a
+  minute. The keepalive is deliberately independent of whether the page has live
+  regions: an idle connection is the one at risk.
+
+- `tests/conformance/` is executable. `dustnet-core`'s `conformance_vectors`
+  test runs every published vector on every `cargo test`, and fails if a
+  fixture on disk has no manifest entry or an entry names a file that is gone.
+  The `.atp` vectors were previously read by nothing, and writing the harness
+  immediately showed that two of the three published rejection vectors were not
+  enforced. The suite grew from six fixtures to forty-nine, covering an accept
+  case for every message type in the control grammar, and the sanitization
+  obligation gained its own vectors with hand-written expected output.
+- `docs/spec/05-conformance.md` states the text-sanitization contract. It
+  previously described the AML grammar without saying that anything had to be
+  removed from text, so an implementation built from the contract alone would
+  have rendered escape sequences and bidi overrides straight to the terminal.
+
+- A trust prompt on `dustnet connect`. Reaching a site whose certificate cannot
+  be verified — self-signed, expired, or issued for another name — with nothing
+  pinned for that host and port now stops and asks, showing the site, why
+  verification failed, and the certificate's full SHA-256 fingerprint so it can
+  be compared against one the operator published. Accepting pins that exact
+  certificate; declining connects to nothing. There is deliberately no third
+  option: "continue without deciding" is the state that produces users with no
+  idea what they are talking to. Answering the prompt changes the site's
+  security context, so the navigation that provoked it is re-issued rather than
+  resumed — the pinned origin is a different origin, and `prepare_navigation`
+  refuses an owner carrying the one computed before the decision.
+- Trust on first use for sites no certification authority vouches for.
+  `dustnet connect <uri> --tofu` pins the SHA-256 of the site's certificate,
+  keyed by the host and port that were typed, and every later connection must
+  present the same one; a mismatch is a hard failure rather than a prompt,
+  because a changed certificate is either a re-keyed server or an interception
+  and a client cannot tell them apart. A pin is honoured afterwards without the
+  flag, since it records a decision the user already made, while creating one
+  always requires `--tofu` — so a store can never downgrade a connection that
+  was not deliberately pinned. Pins live in `~/.config/dustnet/known_sites`
+  (`DUSTNET_TRUST_STORE` overrides), are written owner-only, and the client
+  refuses to read the file if other users can write to it: whoever can add a
+  line chooses the certificate the client will accept. `dustnet trust list`
+  and `dustnet trust forget <host[:port]>` manage it. `--tofu` remains as the
+  non-interactive form of the prompt — it pins without asking, for scripts and
+  for callers with no terminal, which instead receive an error naming the
+  fingerprint and the reason and connect to nothing.
+
+  Pinning skips host name verification and nothing else. The pin binds a
+  certificate to the authority the user typed, which is what makes a
+  self-signed certificate with no matching SAN usable; the handshake signature
+  is verified against the pinned certificate exactly as usual, because a
+  certificate is public and matching a fingerprint without checking the
+  signature would authenticate everyone who had ever connected to the site
+  rather than the holder of its private key.
+- `dustnet connect --ca-file <PEM>` trusts additional certificate authorities
+  alongside the built-in bundle, with host name verification unchanged.
+- `TransportSecurity::PinnedTls`. Each level is part of origin identity, so a
+  pinned session, a CA-verified session and an `--insecure` session to the same
+  host and port are three partitions that never share state.
+
+### Security
+
+- A pinned certificate that changes now fails with its own message rather than
+  a generic handshake error. It names both fingerprints and what to do about
+  each, and it is never a prompt: by that point the only explanations are a
+  re-keyed server and an interception, and asking again would train users to
+  click through the one moment an interception is visible. Previously this
+  reached the user as `failed to parse AML content`, because a first navigation
+  that never activated was reported as a parse failure whatever went wrong.
+- The status bar showed nothing at all for `--insecure`. The indicator was
+  driven by a single `no_tls` boolean, so the one transport most able to
+  mislead — encrypted, therefore looking protected, but unauthenticated —
+  was the one that went unlabelled, while `docs/spec/07-security.md` claimed
+  it was marked. `{security}` now names the transport in use (`no-tls`,
+  `insecure`, `pinned`) and is empty only for CA-verified TLS. It is read from
+  the live origin rather than the launch flags, so navigating between
+  differently trusted sites changes what it claims.
+- The text sanitizer now strips bidirectional controls and invisible formatting
+  characters — U+061C, U+200E, U+200F, U+202A–U+202E, U+2066–U+2069, U+200B,
+  U+2060–U+2064, U+FFF9–U+FFFB and U+FEFF — as well as terminal control
+  sequences. Escape stripping answers what the terminal will execute; it does
+  not answer what the reader will believe. U+202E RIGHT-TO-LEFT OVERRIDE let a
+  link label render as one URI while the link carried another, and the
+  zero-width characters let two labels differing in bytes render identically,
+  both inside the printable range the whitelist admitted. U+200C and U+200D are
+  deliberately preserved: they compose emoji sequences and drive Arabic and
+  Indic shaping, so removing them would corrupt conforming content. Hostnames
+  were never exposed — the URI parser already rejects any non-ASCII host, which
+  closes the IDN homograph vector.
+- Control-message bodies now reject CR, NUL and every other ASCII control
+  character, and must end in LF. `str::lines` silently strips a trailing CR, so
+  `GET /\r\n` validated as a request for `/` while a peer splitting on LF alone
+  read a path of `/\r`. Two implementations disagreeing about the same bytes,
+  with the disagreement invisible to both, is the shape every request-smuggling
+  bug has.
+
+### Fixed
+
+- The AML parser silently discarded everything after the closing `[/page]`. The
+  grammar is `document = ws page ws`, so a second `[page]` root — or any other
+  trailing content — was accepted as though it were not there, letting a server
+  and a client disagree about what a document contained without either
+  reporting a problem. Trailing content is now an `E001` diagnostic.
+- The `ERROR` production in `docs/spec/05-conformance.md` described an inline
+  message (`ERROR 404 Not Found`) that no implementation has ever emitted or
+  accepted; the optional message has always been a `Message:` field on its own
+  line, matching how every other control message carries optional data. The
+  grammar was corrected to the wire format rather than the wire format to the
+  grammar, so this is a documentation fix and not a protocol change.
+- `ERROR` codes must be exactly three digits, and `REDIRECT` codes must be
+  `301` or `302`. Both were parsed as `u16`, which admitted `ERROR 7` and
+  `REDIRECT 303` — codes the conformance contract does not define and a client
+  has no defined behaviour for.
+- `REDIRECT` targets are validated as absolute `atp://` URIs at body
+  validation. The client already resolved them with `AtpUri::parse` rather than
+  `resolve`, so a relative or `http://` target was carried all the way to the
+  point of use before failing.
+- A live-region publish reported `subscribers=0` for the first read of any file
+  while plainly serving a subscriber, because the read happened before the
+  subscriber's receiver was registered. The receiver is now taken first, which
+  also closes a window in which the registry could reap the entry during that
+  read.
+
+### Changed
+
+- The default status bar is the framed, `{fill}`-separated layout the guide
+  already documented, in grey on black rather than reverse video. Reverse
+  takes whatever the terminal's foreground happens to be, so the bar was a
+  black slab on light themes and a white one on dark; naming both colours
+  makes it consistent, and `status-reverse = true` restores the old behaviour.
+  `{security}` stays adjacent to `{uri}` in the default, because a format that
+  drops it shows the same status bar for an `--insecure` link as for a
+  CA-verified one.
+
+- Live regions are read once per change and shared, rather than re-read by every
+  connection on a 250ms timer. A file watched by a thousand viewers was being
+  stat'd and read four thousand times a second to produce identical bytes;
+  it is now read once, and subscribers share the result through a refcounted
+  generation whose budget lease it carries, so its bytes are charged once and
+  returned when the last subscriber lets go. Only the read is shared: each
+  subscriber keeps its own delta baseline, so `Mode: delta` and `Mode: replace`
+  subscribers of the same region are served correctly from one read, and a
+  subscriber that misses a generation still resynchronises itself. Connections
+  no longer hold a per-connection interval timer at all.
+- The default server-wide connection ceiling is 2048, up from 64. The old number
+  reflected per-connection subscription polling rather than any protocol limit.
+  Holding a connection open costs memory; re-establishing one costs a TLS
+  handshake, so keep-alive is the cheaper side of that trade and the ceiling is
+  now set accordingly.
+- Static path resolution no longer blocks a runtime worker. The site root is
+  canonicalised once at bind time instead of on every request, and the
+  `Path::exists` probe is gone because `canonicalize` already reports a missing
+  path: three synchronous filesystem calls per GET and per SUBSCRIBE become one
+  asynchronous call. A path that does not resolve is a 404, as before, rather
+  than a containment error.
+- Connections observe shutdown and leave voluntarily. Previously no connection
+  task watched the shutdown signal, so one idle client was enough to burn the
+  full drain deadline and abort every task; the deadline is now a backstop.
+- Remote memory is bounded and admitted before allocation across cached
+  resources, pending updates, history, scene geometry, and WASM. The mechanics
+  are recorded in `verification/allocation-owners.md`.
+- Function-local collection allocation in the compositor's scene-building and
+  layout paths is counted and reserved before it is built, rather than grown
+  from remote content. Enumerated and enforced by `tools/allocation-audit`.
+- Unsafe Rust is forbidden in every production crate.
+- `docs/spec/07-security.md` now covers only the supported production boundary; the
+  authentication, email-verification, and plugin prose moved to
+  `examples/unsupported-social`.
+- Verification moved to a local `make ci` / `make ci-full` gate and the GitHub
+  Actions workflow was removed — the account does not pay for Actions minutes,
+  so every hosted run queued indefinitely and no gate was ever enforced. macOS
+  is now the only verified platform; Linux is untested and best-effort.
+
+---
+
+Releasing is gated on a green `make ci` / `make ci-full` run, not on a review
+period, an external sign-off, or a written assessment. All verification is our
+own; see [SECURITY.md](SECURITY.md).

@@ -1,0 +1,309 @@
+{
+  "description": "Exhaustive ATP connection state table for ATP/AML 0.2. Authoritative source for the protocol state machine; docs/spec/05-conformance.md refers to this file. dustnet-core's protocol::state tests assert the implementation's transitions are exactly these.",
+  "transitions": [
+    {
+      "endpoint": "Client",
+      "states": [
+        "Handshake"
+      ],
+      "direction": "send",
+      "messages": [
+        "HELLO"
+      ],
+      "next_state": "HandshakeReply"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "HandshakeReply"
+      ],
+      "direction": "receive",
+      "messages": [
+        "WELCOME"
+      ],
+      "next_state": "Ready"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "HandshakeReply"
+      ],
+      "direction": "receive",
+      "messages": [
+        "ERROR",
+        "SERVER-BYE"
+      ],
+      "next_state": "Closed"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "Ready"
+      ],
+      "direction": "send",
+      "messages": [
+        "GET",
+        "INPUT"
+      ],
+      "next_state": "ResponsePending"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "Ready"
+      ],
+      "direction": "send",
+      "messages": [
+        "SUBSCRIBE",
+        "UNSUBSCRIBE"
+      ],
+      "next_state": "Ready"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "Ready"
+      ],
+      "direction": "receive",
+      "messages": [
+        "UPDATE"
+      ],
+      "next_state": "Ready"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "Ready"
+      ],
+      "direction": "send",
+      "messages": [
+        "BYE"
+      ],
+      "next_state": "Closing"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "ResponsePending"
+      ],
+      "direction": "receive",
+      "messages": [
+        "UPDATE"
+      ],
+      "next_state": "ResponsePending"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "ResponsePending"
+      ],
+      "direction": "receive",
+      "messages": [
+        "PAGE",
+        "RESOURCE",
+        "REDIRECT",
+        "ERROR"
+      ],
+      "next_state": "Ready"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "Ready",
+        "ResponsePending"
+      ],
+      "direction": "send",
+      "messages": [
+        "PING"
+      ],
+      "next_state": "unchanged"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "Ready",
+        "ResponsePending"
+      ],
+      "direction": "receive",
+      "messages": [
+        "PONG"
+      ],
+      "next_state": "unchanged"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "Ready",
+        "ResponsePending"
+      ],
+      "direction": "receive",
+      "messages": [
+        "SERVER-BYE"
+      ],
+      "next_state": "Closed"
+    },
+    {
+      "endpoint": "Client",
+      "states": [
+        "Closing"
+      ],
+      "direction": "receive",
+      "messages": [
+        "SERVER-BYE"
+      ],
+      "next_state": "Closed"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Handshake"
+      ],
+      "direction": "receive",
+      "messages": [
+        "HELLO"
+      ],
+      "next_state": "HandshakeReply"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "HandshakeReply"
+      ],
+      "direction": "send",
+      "messages": [
+        "WELCOME"
+      ],
+      "next_state": "Ready"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "HandshakeReply"
+      ],
+      "direction": "send",
+      "messages": [
+        "ERROR",
+        "SERVER-BYE"
+      ],
+      "next_state": "Closed"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Ready"
+      ],
+      "direction": "receive",
+      "messages": [
+        "GET",
+        "INPUT"
+      ],
+      "next_state": "ResponsePending"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Ready"
+      ],
+      "direction": "receive",
+      "messages": [
+        "SUBSCRIBE",
+        "UNSUBSCRIBE"
+      ],
+      "next_state": "Ready"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Ready"
+      ],
+      "direction": "receive",
+      "messages": [
+        "BYE"
+      ],
+      "next_state": "Closing"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "ResponsePending"
+      ],
+      "direction": "send",
+      "messages": [
+        "UPDATE"
+      ],
+      "next_state": "ResponsePending"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "ResponsePending"
+      ],
+      "direction": "send",
+      "messages": [
+        "PAGE",
+        "RESOURCE",
+        "REDIRECT",
+        "ERROR"
+      ],
+      "next_state": "Ready"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Ready"
+      ],
+      "direction": "send",
+      "messages": [
+        "UPDATE"
+      ],
+      "next_state": "Ready"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Ready",
+        "ResponsePending"
+      ],
+      "direction": "receive",
+      "messages": [
+        "PING"
+      ],
+      "next_state": "unchanged"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Ready",
+        "ResponsePending"
+      ],
+      "direction": "send",
+      "messages": [
+        "PONG"
+      ],
+      "next_state": "unchanged"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Ready",
+        "ResponsePending"
+      ],
+      "direction": "send",
+      "messages": [
+        "SERVER-BYE"
+      ],
+      "next_state": "Closed"
+    },
+    {
+      "endpoint": "Server",
+      "states": [
+        "Closing"
+      ],
+      "direction": "send",
+      "messages": [
+        "SERVER-BYE"
+      ],
+      "next_state": "Closed"
+    }
+  ]
+}

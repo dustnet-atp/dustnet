@@ -1,0 +1,29 @@
+[page mode=document title="AML Demo Site"]
+
+  [heading level=1 fg=bright-cyan]AML Demo Site[/heading]
+  [text dim]A small multi-page site exercising the markup a real one uses.[/text]
+  [spacer lines=1 /]
+
+  [box border=rounded fg=cyan title="Start here"]
+    [text]Every page below is served by [text bold]dustnetd[/text] and rendered by
+    the terminal client. Follow a link with Enter; Tab moves between controls.[/text]
+  [/box]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Pages[/heading]
+  [nav]
+    [link href="/text"][text fg=bright-white]Text and typography[/text][/link]
+    [link href="/layout"][text fg=bright-white]Boxes, rows and columns[/text][/link]
+    [link href="/lists-tables"][text fg=bright-white]Lists and tables[/text][/link]
+    [link href="/forms"][text fg=bright-white]Forms and input[/text][/link]
+    [link href="/panels"][text fg=bright-white]Panels and state[/text][/link]
+    [link href="/animations"][text fg=bright-white]Frame animations[/text][/link]
+    [link href="/effects"][text fg=bright-white]WASM effects[/text][/link]
+    [link href="/live"][text fg=bright-white]Live regions[/text][/link]
+    [link href="/transitions"][text fg=bright-white]Page transitions[/text][/link]
+  [/nav]
+  [spacer lines=1 /]
+
+  [hr style=single fg=cyan /]
+  [text align=center dim]dustnetd examples/demo-site[/text]
+[/page]

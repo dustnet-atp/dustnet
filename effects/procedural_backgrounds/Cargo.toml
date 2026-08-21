@@ -1,0 +1,23 @@
+[package]
+name = "procedural_backgrounds"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["plasma"]
+starfield = []
+plasma = []
+lava = []
+aurora = []
+vortex = []
+caustics = []
+orbitals = []
+kaleidoscope = []
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

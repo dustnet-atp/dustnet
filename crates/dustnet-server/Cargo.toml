@@ -1,0 +1,27 @@
+[package]
+name = "dustnet-server"
+version = "0.2.0-alpha.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Static, plugin-free production ATP server"
+repository.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/dustnet-server"
+keywords = ["atp", "aml", "server", "static", "terminal"]
+categories = ["network-programming", "web-programming::http-server"]
+
+[dependencies]
+dustnet-core = { path = "../dustnet-core", version = "=0.2.0-alpha.1" }
+notify = "8.2.0"
+rcgen = "0.13"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pki-types = { version = "1", features = ["std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "fs", "sync", "macros", "time", "signal"] }
+tokio-rustls = "0.26"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

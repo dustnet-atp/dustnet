@@ -1,0 +1,40 @@
+[page mode=document title="Animations"]
+
+  [heading level=1 fg=bright-cyan]Frame animations[/heading]
+  [link href="/"][text dim]< back to index[/text][/link]
+  [spacer lines=1 /]
+
+  [text]Authored animations are a list of frames with a frame rate. They are
+  data, not code: the client advances them on its own clock and never asks the
+  server for the next frame.[/text]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Spinner, looping at 4fps[/heading]
+  [animate id="spinner" fps=4 loop=true]
+    [frame][pre fg=cyan]|[/pre][/frame]
+    [frame][pre fg=cyan]/[/pre][/frame]
+    [frame][pre fg=cyan]-[/pre][/frame]
+    [frame][pre fg=cyan]\[/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Progress, playing once at 4fps[/heading]
+  [animate id="progress" fps=4 loop=false]
+    [frame][pre][[          ]]   0%[/pre][/frame]
+    [frame][pre][[###       ]]  30%[/pre][/frame]
+    [frame][pre][[######    ]]  60%[/pre][/frame]
+    [frame][pre][[##########]] 100%[/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Chained by an authored event[/heading]
+  [text dim]The second animation starts when the first finishes.[/text]
+  [animate id="first" fps=6 loop=false]
+    [frame][pre fg=green].[/pre][/frame]
+    [frame][pre fg=green]..[/pre][/frame]
+    [frame][pre fg=green]...[/pre][/frame]
+  [/animate]
+  [animate id="second" fps=6 loop=false after="first"]
+    [frame][pre fg=bright-green]ready[/pre][/frame]
+  [/animate]
+[/page]

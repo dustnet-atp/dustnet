@@ -1,0 +1,14 @@
+/target
+
+# Per-crate build artifacts for WASM effects
+effects/*/target/
+effects/*/target-*/
+effects/*/Cargo.lock
+fuzz/target/
+fuzz/Cargo.lock
+tools/*/target/
+
+# Local scratch
+NOTES
+.claude/
+*.bak

@@ -1,0 +1,81 @@
+[page mode=document title="About — Neon City"]
+  [heading level=1 fg=yellow]About Neon City BBS[/heading]
+  [hr style=dash fg=yellow /]
+  [spacer lines=1 /]
+
+  [box border=rounded fg=yellow w=55 title="What Is This?"]
+    [text]Neon City is a terminal-native BBS running on the ATP (ANSI Terminal Protocol). It serves pages written in AML — a markup language designed for terminals.[/text]
+    [spacer lines=1 /]
+    [text]No web browser needed. No JavaScript. No tracking. Just your terminal and a connection.[/text]
+  [/box]
+
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-yellow]How ATP Works[/heading]
+
+  [text]The protocol is simple:[/text]
+  [spacer lines=1 /]
+
+  [list style=number]
+    [item][text]Client connects and sends [text bold fg=cyan]HELLO[/text] with capabilities[/text][/item]
+    [item][text]Server replies with [text bold fg=cyan]WELCOME[/text][/text][/item]
+    [item][text]Client sends [text bold fg=cyan]GET /path[/text] for each page[/text][/item]
+    [item][text]Server replies with [text bold fg=cyan]PAGE[/text] containing AML content[/text][/item]
+    [item][text]When done, either side sends [text bold fg=cyan]BYE[/text][/text][/item]
+  [/list]
+
+  [spacer lines=1 /]
+  [text dim]Connections are persistent — multiple pages over one connection, like HTTP keep-alive.[/text]
+
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-yellow]Server Info[/heading]
+
+  [table border=single]
+    [thead]
+      [tr][th]Property[/th][th]Value[/th][/tr]
+    [/thead]
+    [tbody]
+      [tr][td]Software[/td][td fg=cyan]Dustnet v0.1[/td][/tr]
+      [tr][td]Protocol[/td][td fg=cyan]ATP 1.0[/td][/tr]
+      [tr][td]Default Port[/td][td fg=cyan]1985[/td][/tr]
+      [tr][td]Encryption[/td][td fg=cyan]TLS 1.3 (rustls)[/td][/tr]
+      [tr][td]Content[/td][td fg=cyan]AML (ANSI Markup)[/td][/tr]
+    [/tbody]
+  [/table]
+
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-yellow]AML Features[/heading]
+
+  [text]Pages can contain:[/text]
+  [list style=bullet]
+    [item][text]Styled text (bold, italic, colors, hex colors)[/text][/item]
+    [item][text]Boxes with borders (single, double, rounded, heavy, ASCII)[/text][/item]
+    [item][text]Tables, lists, headings, horizontal rules[/text][/item]
+    [item][text]Row/column layouts[/text][/item]
+    [item][text]Links to other ATP pages[/text][/item]
+    [item][text]Interactive panels with state switching[/text][/item]
+    [item][text]Frame-based animations[/text][/item]
+    [item][text]Reusable components (macros)[/text][/item]
+    [item][text]Preformatted text and ASCII art[/text][/item]
+  [/list]
+
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-yellow]Contact[/heading]
+
+  [text]SysOp: [text bold fg=bright-white]@neon_admin[/text][/text]
+  [text dim]This site is open source. Contributions welcome.[/text]
+
+  [spacer lines=1 /]
+  [hr style=heavy fg=yellow /]
+
+  [link href="/"]
+    [text fg=cyan]← Back to directory[/text]
+  [/link]
+  [spacer lines=1 /]
+  [link href="/board"]
+    [text fg=cyan]→ Message board[/text]
+  [/link]
+[/page]

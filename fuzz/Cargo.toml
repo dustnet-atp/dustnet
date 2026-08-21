@@ -1,0 +1,66 @@
+[package]
+name = "dustnet-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+crossterm = "0.28"
+dustnet-core = { path = "../crates/dustnet-core" }
+
+[dependencies.dustnet]
+package = "dustnet-client"
+path = "../crates/dustnet-client"
+
+[[bin]]
+name = "fuzz_scanner"
+path = "fuzz_targets/fuzz_scanner.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_parser"
+path = "fuzz_targets/fuzz_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_pipeline"
+path = "fuzz_targets/fuzz_pipeline.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_protocol"
+path = "fuzz_targets/fuzz_protocol.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_uri"
+path = "fuzz_targets/fuzz_uri.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_protocol_state"
+path = "fuzz_targets/fuzz_protocol_state.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_viewer_state"
+path = "fuzz_targets/fuzz_viewer_state.rs"
+test = false
+doc = false
+bench = false

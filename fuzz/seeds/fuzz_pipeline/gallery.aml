@@ -1,0 +1,74 @@
+[page mode=document title="Art Gallery — Neon City"]
+  [heading level=1 fg=magenta]Art Gallery[/heading]
+  [text dim]Curated ANSI art from the community[/text]
+  [hr style=dash fg=magenta /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-magenta]"Sunset Over the Grid"[/heading]
+  [text dim]by @pixel_witch · 2025[/text]
+  [spacer lines=1 /]
+  [box border=double fg=magenta]
+    [pre fg=bright-yellow]
+       .  *  .    *    .  *  .
+    *    .    ╔═══════╗   .   *
+  .    *   .  ║ ░▒▓█▓▒░║  *    .
+    .  ╔══════╩═══════╩══════╗
+   ────╢  ▓▓▒▒░░░░░░░░▒▒▓▓  ╟────
+   ────╢  ▒▒░░          ░░▒▒  ╟────
+   ════╩══════════════════════╩════
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    [/pre]
+  [/box]
+
+  [spacer lines=1 /]
+  [hr style=dot fg=magenta /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-cyan]"Data Stream"[/heading]
+  [text dim]by @terminal_kid · 2025[/text]
+  [spacer lines=1 /]
+  [box border=double fg=cyan]
+    [pre fg=bright-green]
+  ┌──────────────────────────────┐
+  │ 01001000 ░░▒▒▓▓█ 01100101  │
+  │ ╔══╗ ─── ╔══╗ ─── ╔══╗     │
+  │ ║▓▓║ >>> ║░░║ >>> ║▒▒║     │
+  │ ╚══╝ ─── ╚══╝ ─── ╚══╝     │
+  │ 01101100 ░▒▓█▓▒░ 01101111  │
+  └──────────────────────────────┘
+    [/pre]
+  [/box]
+
+  [spacer lines=1 /]
+  [hr style=dot fg=magenta /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=bright-yellow]"Neon Towers"[/heading]
+  [text dim]by @retro_ghost · 2025[/text]
+  [spacer lines=1 /]
+  [box border=double fg=yellow]
+    [pre fg=bright-yellow]
+       ╥           ╥
+      ╔╩╗         ╔╩╗
+      ║█║  ╥     ╔╩═╩╗
+     ╔╩═╩╗╔╩╗    ║███║
+     ║███║║█║   ╔╩═══╩╗
+    ╔╩═══╩╩═╩╗  ║█████║
+  ══╩═════════╩══╩═════╩══
+    [/pre]
+  [/box]
+
+  [spacer lines=1 /]
+  [hr style=heavy fg=magenta /]
+
+  [text align=center dim]— end of gallery —[/text]
+  [spacer lines=1 /]
+
+  [link href="/"]
+    [text fg=cyan]← Back to directory[/text]
+  [/link]
+  [spacer lines=1 /]
+  [link href="/board"]
+    [text fg=cyan]→ Message board[/text]
+  [/link]
+[/page]

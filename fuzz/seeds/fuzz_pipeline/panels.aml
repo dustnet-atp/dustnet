@@ -1,0 +1,171 @@
+[page mode=document title="Panel Demos"]
+
+  [heading level=1 fg=bright-cyan]Panel Demos[/heading]
+  [text dim]Interactive panels with state switching via button triggers.[/text]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Toggle Switch[/heading]
+
+  [panel id="notifications" state="off"]
+    [state name="off"]
+      [text]Notifications: [text fg=red]OFF[/text][/text]
+    [/state]
+    [state name="on"]
+      [text]Notifications: [text fg=green bold]ON[/text][/text]
+    [/state]
+  [/panel]
+
+  [button action="toggle" target="notifications" states="off,on" key="n"]
+    Toggle Notifications
+  [/button]
+  [spacer lines=1 /]
+
+  [hr style=dash /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Accordion / Drawer[/heading]
+
+  [panel id="settings" state="closed"]
+    [state name="closed" h=1]
+      [text dim]> Settings[/text]
+    [/state]
+    [state name="open" h=fit transition="slide-down" duration=200ms]
+      [text dim]v Settings[/text]
+      [box border=single fg=white]
+        [text]Volume:  ####...... 40%[/text]
+        [text]Theme:   Dark[/text]
+        [text]Font:    CP437[/text]
+      [/box]
+    [/state]
+  [/panel]
+
+  [button action="toggle" target="settings" states="closed,open" key="s"]
+    Toggle Settings
+  [/button]
+  [spacer lines=1 /]
+
+  [hr style=dash /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Tabbed Interface[/heading]
+
+  [row gap=2]
+    [col][button action="set" target="tabs" to="files" key="1"]1: Files[/button][/col]
+    [col][button action="set" target="tabs" to="edit" key="2"]2: Edit[/button][/col]
+    [col][button action="set" target="tabs" to="settings" key="3"]3: Settings[/button][/col]
+  [/row]
+
+  [panel id="tabs" state="files"]
+    [state name="files" transition="slide-left" duration=150ms]
+      [box border=single fg=cyan title="Files"]
+        [list style=dash]
+          [item][text]readme.txt[/text][/item]
+          [item][text]config.aml[/text][/item]
+          [item][text]art/logo.ans[/text][/item]
+          [item][text]art/banner.ans[/text][/item]
+        [/list]
+      [/box]
+    [/state]
+    [state name="edit" transition="slide-left" duration=150ms]
+      [box border=single fg=green title="Edit"]
+        [input name="content" multiline rows=5 placeholder="Start typing..." /]
+      [/box]
+    [/state]
+    [state name="settings" transition="slide-left" duration=150ms]
+      [box border=single fg=yellow title="Settings"]
+        [text]Theme: [text bold]Dark[/text][/text]
+        [text]Font:  [text bold]CP437[/text][/text]
+        [text]Tab size: [text bold]4[/text][/text]
+      [/box]
+    [/state]
+  [/panel]
+  [spacer lines=1 /]
+
+  [hr style=dash /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Sliding Hatch / Reveal[/heading]
+
+  [panel id="hatch" state="sealed"]
+    [state name="sealed"]
+      [pre fg=white]
+ ########################
+ ###   CLASSIFIED    ###
+ ########################
+      [/pre]
+    [/state]
+    [state name="revealed" transition="slide-up" duration=400ms]
+      [box border=double fg=green]
+        [text bold fg=green]ACCESS GRANTED[/text]
+        [text]Agent codename: PHANTOM[/text]
+        [text]Clearance: ULTRA[/text]
+      [/box]
+    [/state]
+  [/panel]
+
+  [button action="set" target="hatch" to="revealed" key="r"]
+    Declassify
+  [/button]
+
+  [button action="set" target="hatch" to="sealed" key="x"]
+    Re-seal
+  [/button]
+  [spacer lines=1 /]
+
+  [hr style=dash /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Dropdown Menu[/heading]
+
+  [panel id="menu" state="closed"]
+    [state name="closed" h=1]
+      [text]File v[/text]
+    [/state]
+    [state name="open" h=fit transition="slide-down" duration=100ms]
+      [text]File ^[/text]
+      [box border=single w=20]
+        [link href="/new" key="N"]New[/link]
+        [link href="/open" key="O"]Open[/link]
+        [link href="/save" key="S"]Save[/link]
+        [hr style=single /]
+        [link href="/quit"]Quit[/link]
+      [/box]
+    [/state]
+  [/panel]
+
+  [button action="toggle" target="menu" states="closed,open" key="f"]
+    Toggle Menu
+  [/button]
+  [spacer lines=1 /]
+
+  [hr style=dash /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Multi-State Cycling[/heading]
+
+  [panel id="theme" state="dark"]
+    [state name="dark"]
+      [box border=single fg=white bg=black w=30 h=3]
+        [text bold fg=white]Theme: Dark[/text]
+      [/box]
+    [/state]
+    [state name="light"]
+      [box border=single fg=black w=30 h=3]
+        [text bold]Theme: Light[/text]
+      [/box]
+    [/state]
+    [state name="solarized"]
+      [box border=single fg=cyan w=30 h=3]
+        [text bold fg=cyan]Theme: Solarized[/text]
+      [/box]
+    [/state]
+  [/panel]
+
+  [button action="toggle" target="theme" states="dark,light,solarized" key="t"]
+    Cycle Theme
+  [/button]
+  [spacer lines=1 /]
+
+  [hr style=heavy fg=cyan /]
+  [text align=center dim]End of panel demos[/text]
+[/page]

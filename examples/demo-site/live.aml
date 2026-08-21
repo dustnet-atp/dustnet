@@ -1,0 +1,29 @@
+[page mode=document title="Live regions"]
+
+  [heading level=1 fg=bright-cyan]Live regions[/heading]
+  [link href="/"][text dim]< back to index[/text][/link]
+  [spacer lines=1 /]
+
+  [text]A live region subscribes to a path on the same origin. The server pushes
+  a replacement fragment whenever the file behind it changes, and the client
+  relays out only that region. Subscriptions are page-scoped: navigating away
+  retires them, and a reconnect replays them only to the same origin.[/text]
+  [spacer lines=1 /]
+
+  [box w=52 h=6 border=double fg=cyan title="Subscribed to /status"]
+    [live id="status" endpoint="/status"]
+      [text dim]Waiting for the first update...[/text]
+    [/live]
+  [/box]
+  [spacer lines=1 /]
+
+  [box w=52 h=6 border=single fg=magenta title="Subscribed to /feed"]
+    [live id="feed" endpoint="/feed"]
+      [text dim]Waiting for the first update...[/text]
+    [/live]
+  [/box]
+  [spacer lines=1 /]
+
+  [text dim]Serve this directory and edit status.aml or feed.aml to see the
+  regions update without a reload.[/text]
+[/page]

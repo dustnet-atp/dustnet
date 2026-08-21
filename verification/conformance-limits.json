@@ -1,0 +1,107 @@
+{
+  "description": "Normative implementation limits for ATP/AML 0.2. Authoritative source for every limit the conformance contract states; docs/spec/05-conformance.md refers to this file rather than restating the numbers. dustnet-client's resource tests assert each value matches the constant that enforces it.",
+  "limits": [
+    {
+      "name": "Frame",
+      "value": 16777216,
+      "unit": "bytes"
+    },
+    {
+      "name": "Control body",
+      "value": 16384,
+      "unit": "bytes"
+    },
+    {
+      "name": "INPUT body",
+      "value": 65536,
+      "unit": "bytes"
+    },
+    {
+      "name": "PAGE body",
+      "value": 1114112,
+      "unit": "bytes"
+    },
+    {
+      "name": "UPDATE body",
+      "value": 1048576,
+      "unit": "bytes"
+    },
+    {
+      "name": "WASM module",
+      "value": 524288,
+      "unit": "bytes"
+    },
+    {
+      "name": "Aggregate scene cells",
+      "value": 1048576
+    },
+    {
+      "name": "Aggregate tracked remote memory",
+      "value": 134217728,
+      "unit": "bytes"
+    },
+    {
+      "name": "WASM guest memory",
+      "value": 4194304,
+      "unit": "bytes"
+    },
+    {
+      "name": "WASM guests per page",
+      "value": 16
+    },
+    {
+      "name": "Staged WASM guests during navigation",
+      "value": 32
+    },
+    {
+      "name": "Aggregate WASM memory",
+      "value": 67108864,
+      "unit": "bytes"
+    },
+    {
+      "name": "Cached resources",
+      "value": 32,
+      "unit": "entries",
+      "bytes": 8388608
+    },
+    {
+      "name": "Pending updates",
+      "value": 64,
+      "unit": "entries",
+      "bytes": 8388608
+    },
+    {
+      "name": "History",
+      "value": 128,
+      "unit": "entries",
+      "bytes": 16777216,
+      "bytes_note": "retained AML bytes"
+    },
+    {
+      "name": "Sessions per origin",
+      "value": 8
+    },
+    {
+      "name": "Sessions total",
+      "value": 256
+    },
+    {
+      "name": "Session token",
+      "value": 4096,
+      "unit": "bytes"
+    },
+    {
+      "name": "Session scope",
+      "value": 1024,
+      "unit": "bytes"
+    },
+    {
+      "name": "Animation regions",
+      "value": 1024
+    },
+    {
+      "name": "Authored frames",
+      "value": 256
+    }
+  ]
+}

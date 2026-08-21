@@ -1,0 +1,15 @@
+version	target	seconds	executions	execs_per_sec	crashes	host	toolchain
+0.2.0-alpha.1	fuzz_scanner	120	5062811	41841	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_parser	120	94181	778	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_pipeline	120	44231	365	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_protocol	120	14014873	115825	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_protocol_state	120	1365846	11287	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_viewer_state	120	604773	4998	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_uri	120	14677387	121300	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_scanner	600	26492964	44081	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_protocol	600	76979702	128086	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_protocol_state	600	6425217	10690	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_viewer_state	600	4540217	7554	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_uri	600	86977410	144721	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_parser	1800	1156461	642	0	aarch64-apple-darwin	rustc 1.96.0-nightly
+0.2.0-alpha.1	fuzz_pipeline	1800	79452	43	0	aarch64-apple-darwin	rustc 1.96.0-nightly

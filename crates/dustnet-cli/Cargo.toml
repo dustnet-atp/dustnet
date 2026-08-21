@@ -1,0 +1,29 @@
+[package]
+name = "dustnet"
+version = "0.2.0-alpha.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Dustnet client and AML authoring CLI"
+repository.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/dustnet"
+keywords = ["atp", "aml", "terminal", "browser", "cli"]
+categories = ["command-line-utilities", "network-programming"]
+
+[[bin]]
+name = "dustnet"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.6", features = ["derive"] }
+clap_complete = "4.6.9"
+clap_mangen = "0.3.3"
+dustnet-client = { path = "../dustnet-client", version = "=0.2.0-alpha.1" }
+dustnet-core = { path = "../dustnet-core", version = "=0.2.0-alpha.1" }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

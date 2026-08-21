@@ -1,0 +1,34 @@
+[advisories]
+unmaintained = "workspace"
+
+[bans]
+# Transitive version skew, not a security property: duplicates cost binary
+# size, not safety, and the graph below is not ours to flatten. Recorded here
+# rather than left as an unexplained warning on every run.
+#   getrandom    — rustls and tokio pull different majors
+#   windows-sys  — three majors via transitive Windows shims; unreachable on
+#                  the only platform this project claims (macOS/aarch64)
+multiple-versions = "warn"
+wildcards = "deny"
+
+[licenses]
+confidence-threshold = 0.93
+# Exactly the licences the dependency graph actually uses. Allowances for
+# licences nothing depends on were removed: `cargo deny` warns about them, and
+# an unused allowance is a decision made in advance for a case that has not
+# arisen. MPL-2.0 in particular is weak copyleft, and pre-allowing it meant a
+# future dependency could introduce it without anyone deciding to.
+allow = [
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

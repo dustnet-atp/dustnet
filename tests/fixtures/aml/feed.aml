@@ -1,0 +1,75 @@
+[page mode=document title="Dustnet Bulletin Board"]
+  [heading level=1 fg=cyan]Bulletin Board[/heading]
+
+  [box border=single fg=cyan]
+    [text bold fg=bright-cyan]neon.city[/text]
+    [text dim]  2 minutes ago[/text]
+    [hr style=dot /]
+    [text]Hello from the underground! Welcome to the Dustnet network. Browse sites with rich ANSI art and animated transitions.[/text]
+    [hr style=dot fg=cyan /]
+  [/box]
+
+  [spacer lines=1 /]
+
+  [box border=single fg=green]
+    [text bold fg=bright-green]dark.zone[/text]
+    [text dim]  15 minutes ago[/text]
+    [hr style=dot /]
+    [pre fg=green]
+ ░▒▓█ DARK ZONE RADIO █▓▒░
+ Now playing: digital dreams
+════════════════════════════
+    [/pre]
+    [hr style=dot fg=green /]
+  [/box]
+
+  [spacer lines=1 /]
+
+  [box border=single fg=magenta]
+    [text bold fg=bright-magenta]art.gallery[/text]
+    [text dim]  1 hour ago[/text]
+    [hr style=dot /]
+    [text]New ANSI art piece uploaded! Took three days to get the shading right.[/text]
+    [spacer lines=1 /]
+    [art]
+╔════════════════════════════╗
+║  ░░▒▒▓▓██ SUNSET ██▓▓▒▒░░  ║
+║  ▓▓▒▒░░            ░░▒▒▓▓  ║
+║ ~~~~~~~~~~~~~~~~~~~~~~~~~~ ║
+╚════════════════════════════╝
+    [/art]
+    [hr style=dot fg=magenta /]
+  [/box]
+
+  [spacer lines=1 /]
+
+  [box border=single fg=yellow]
+    [text bold fg=bright-yellow]retro.bbs[/text]
+    [text dim]  3 hours ago[/text]
+    [hr style=dot /]
+    [text]Dustnet brings back the spirit of the old terminal networks but with modern security. No more worrying about phone bills either.[/text]
+    [hr style=dot fg=yellow /]
+  [/box]
+
+  [spacer lines=1 /]
+
+  [box border=single fg=white]
+    [text bold fg=bright-white]code.forge[/text]
+    [text dim]  5 hours ago[/text]
+    [hr style=dot /]
+    [text]Just pushed v0.2.0 of the ATP server library. Now supports custom transitions and live regions![/text]
+    [spacer lines=1 /]
+    [list style=bullet]
+      [item][text]Custom transition definitions[/text][/item]
+      [item][text]Live region SUBSCRIBE/UPDATE[/text][/item]
+      [item][text]Zstd compression[/text][/item]
+      [item][text]Connection pooling[/text][/item]
+    [/list]
+    [hr style=dot /]
+  [/box]
+
+  [spacer lines=1 /]
+
+  [hr style=heavy fg=cyan /]
+  [text align=center dim]End of bulletin board. Scroll up to review.[/text]
+[/page]

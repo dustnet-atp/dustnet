@@ -1,0 +1,4 @@
+GET /page
+Query: a=1&b=2
+Referrer: /index
+Session: opaque-token

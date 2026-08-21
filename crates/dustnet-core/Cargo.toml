@@ -1,0 +1,22 @@
+[package]
+name = "dustnet-core"
+version = "0.2.0-alpha.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "ATP/AML protocol, parser, scanner, URI, origin, and session primitives"
+repository.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/dustnet-core"
+keywords = ["atp", "aml", "protocol", "parser", "terminal"]
+categories = ["network-programming", "parser-implementations"]
+
+[dependencies]
+idna = "1"
+
+[dev-dependencies]
+# Tests only: reads the machine-readable claims under `verification/` so no
+# test parses prose. Already in the workspace lock via tracing-subscriber.
+serde_json = "1"
+
+[lints]
+workspace = true

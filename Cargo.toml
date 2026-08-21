@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dustnet-core",
+    "crates/dustnet-client",
+    "crates/dustnet-server",
+    "crates/dustnet-cli",
+    "crates/dustnetd",
+]
+exclude = [
+    "examples/unsupported-social",
+    "effects/matrix_rain",
+    "effects/typewriter",
+    "effects/line_draw",
+    "effects/static_noise",
+    "effects/procedural_backgrounds",
+    "effects/content_particles",
+    "fuzz",
+    "tools/prerender-figlet",
+    "tools/allocation-audit",
+]
+
+[workspace.package]
+version = "0.2.0-alpha.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/roobert/dustnet"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# Named explicitly rather than inherited, so what a released binary is built
+# with is a decision recorded here instead of a cargo default that can change
+# between toolchains.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+strip = "debuginfo"
+debug = false
+# `panic = "abort"` is the tempting choice and it is the wrong one here.
+# Terminal restoration on panic unwind is a *tested* behaviour: a panicking
+# viewer that skipped its unwind would leave the terminal in raw mode, which
+# `terminal_is_restored_after_panic_unwind` exists to prevent. Aborting would
+# also break `cargo fuzz` and every `#[should_panic]` test. It sits against
+# the framing of panic-freedom too, where abort is the *bounded* outcome that
+# `forbid(unsafe_code)` already guarantees — not something to reach for.
+panic = "unwind"

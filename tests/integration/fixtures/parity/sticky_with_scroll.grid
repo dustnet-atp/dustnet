@@ -1,0 +1,217 @@
+grid 40x9
+0,0 '┌' fg=r:aaaaaa bg=r:0000aa
+1,0 '─' fg=r:aaaaaa bg=r:0000aa
+2,0 '─' fg=r:aaaaaa bg=r:0000aa
+3,0 '─' fg=r:aaaaaa bg=r:0000aa
+4,0 '─' fg=r:aaaaaa bg=r:0000aa
+5,0 '─' fg=r:aaaaaa bg=r:0000aa
+6,0 '─' fg=r:aaaaaa bg=r:0000aa
+7,0 '─' fg=r:aaaaaa bg=r:0000aa
+8,0 '─' fg=r:aaaaaa bg=r:0000aa
+9,0 '─' fg=r:aaaaaa bg=r:0000aa
+10,0 '─' fg=r:aaaaaa bg=r:0000aa
+11,0 '─' fg=r:aaaaaa bg=r:0000aa
+12,0 '─' fg=r:aaaaaa bg=r:0000aa
+13,0 '─' fg=r:aaaaaa bg=r:0000aa
+14,0 '─' fg=r:aaaaaa bg=r:0000aa
+15,0 '─' fg=r:aaaaaa bg=r:0000aa
+16,0 '─' fg=r:aaaaaa bg=r:0000aa
+17,0 '─' fg=r:aaaaaa bg=r:0000aa
+18,0 '─' fg=r:aaaaaa bg=r:0000aa
+19,0 '─' fg=r:aaaaaa bg=r:0000aa
+20,0 '─' fg=r:aaaaaa bg=r:0000aa
+21,0 '─' fg=r:aaaaaa bg=r:0000aa
+22,0 '─' fg=r:aaaaaa bg=r:0000aa
+23,0 '─' fg=r:aaaaaa bg=r:0000aa
+24,0 '─' fg=r:aaaaaa bg=r:0000aa
+25,0 '─' fg=r:aaaaaa bg=r:0000aa
+26,0 '─' fg=r:aaaaaa bg=r:0000aa
+27,0 '─' fg=r:aaaaaa bg=r:0000aa
+28,0 '─' fg=r:aaaaaa bg=r:0000aa
+29,0 '─' fg=r:aaaaaa bg=r:0000aa
+30,0 '─' fg=r:aaaaaa bg=r:0000aa
+31,0 '─' fg=r:aaaaaa bg=r:0000aa
+32,0 '─' fg=r:aaaaaa bg=r:0000aa
+33,0 '─' fg=r:aaaaaa bg=r:0000aa
+34,0 '─' fg=r:aaaaaa bg=r:0000aa
+35,0 '─' fg=r:aaaaaa bg=r:0000aa
+36,0 '─' fg=r:aaaaaa bg=r:0000aa
+37,0 '─' fg=r:aaaaaa bg=r:0000aa
+38,0 '─' fg=r:aaaaaa bg=r:0000aa
+39,0 '┐' fg=r:aaaaaa bg=r:0000aa
+0,1 '│' fg=r:aaaaaa bg=r:0000aa
+1,1 ' ' fg=r:aaaaaa bg=r:0000aa
+2,1 ' ' fg=r:aaaaaa bg=r:0000aa
+3,1 ' ' fg=r:aaaaaa bg=r:0000aa
+4,1 ' ' fg=r:aaaaaa bg=r:0000aa
+5,1 ' ' fg=r:aaaaaa bg=r:0000aa
+6,1 ' ' fg=r:aaaaaa bg=r:0000aa
+7,1 ' ' fg=r:aaaaaa bg=r:0000aa
+8,1 ' ' fg=r:aaaaaa bg=r:0000aa
+9,1 ' ' fg=r:aaaaaa bg=r:0000aa
+10,1 ' ' fg=r:aaaaaa bg=r:0000aa
+11,1 ' ' fg=r:aaaaaa bg=r:0000aa
+12,1 ' ' fg=r:aaaaaa bg=r:0000aa
+13,1 ' ' fg=r:aaaaaa bg=r:0000aa
+14,1 ' ' fg=r:aaaaaa bg=r:0000aa
+15,1 ' ' fg=r:aaaaaa bg=r:0000aa
+16,1 ' ' fg=r:aaaaaa bg=r:0000aa
+17,1 ' ' fg=r:aaaaaa bg=r:0000aa
+18,1 ' ' fg=r:aaaaaa bg=r:0000aa
+19,1 ' ' fg=r:aaaaaa bg=r:0000aa
+20,1 ' ' fg=r:aaaaaa bg=r:0000aa
+21,1 ' ' fg=r:aaaaaa bg=r:0000aa
+22,1 ' ' fg=r:aaaaaa bg=r:0000aa
+23,1 ' ' fg=r:aaaaaa bg=r:0000aa
+24,1 ' ' fg=r:aaaaaa bg=r:0000aa
+25,1 ' ' fg=r:aaaaaa bg=r:0000aa
+26,1 ' ' fg=r:aaaaaa bg=r:0000aa
+27,1 ' ' fg=r:aaaaaa bg=r:0000aa
+28,1 ' ' fg=r:aaaaaa bg=r:0000aa
+29,1 ' ' fg=r:aaaaaa bg=r:0000aa
+30,1 ' ' fg=r:aaaaaa bg=r:0000aa
+31,1 ' ' fg=r:aaaaaa bg=r:0000aa
+32,1 ' ' fg=r:aaaaaa bg=r:0000aa
+33,1 ' ' fg=r:aaaaaa bg=r:0000aa
+34,1 ' ' fg=r:aaaaaa bg=r:0000aa
+35,1 ' ' fg=r:aaaaaa bg=r:0000aa
+36,1 ' ' fg=r:aaaaaa bg=r:0000aa
+37,1 ' ' fg=r:aaaaaa bg=r:0000aa
+38,1 ' ' fg=r:aaaaaa bg=r:0000aa
+39,1 '│' fg=r:aaaaaa bg=r:0000aa
+0,2 '│' fg=r:aaaaaa bg=r:0000aa
+1,2 ' ' fg=r:aaaaaa bg=r:0000aa
+2,2 'S' fg=r:aaaaaa bg=r:0000aa
+3,2 'T' fg=r:aaaaaa bg=r:0000aa
+4,2 'I' fg=r:aaaaaa bg=r:0000aa
+5,2 'C' fg=r:aaaaaa bg=r:0000aa
+6,2 'K' fg=r:aaaaaa bg=r:0000aa
+7,2 'Y' fg=r:aaaaaa bg=r:0000aa
+8,2 ' ' fg=r:aaaaaa bg=r:0000aa
+9,2 'H' fg=r:aaaaaa bg=r:0000aa
+10,2 'E' fg=r:aaaaaa bg=r:0000aa
+11,2 'A' fg=r:aaaaaa bg=r:0000aa
+12,2 'D' fg=r:aaaaaa bg=r:0000aa
+13,2 'E' fg=r:aaaaaa bg=r:0000aa
+14,2 'R' fg=r:aaaaaa bg=r:0000aa
+15,2 ' ' fg=r:aaaaaa bg=r:0000aa
+16,2 ' ' fg=r:aaaaaa bg=r:0000aa
+17,2 ' ' fg=r:aaaaaa bg=r:0000aa
+18,2 ' ' fg=r:aaaaaa bg=r:0000aa
+19,2 ' ' fg=r:aaaaaa bg=r:0000aa
+20,2 ' ' fg=r:aaaaaa bg=r:0000aa
+21,2 ' ' fg=r:aaaaaa bg=r:0000aa
+22,2 ' ' fg=r:aaaaaa bg=r:0000aa
+23,2 ' ' fg=r:aaaaaa bg=r:0000aa
+24,2 ' ' fg=r:aaaaaa bg=r:0000aa
+25,2 ' ' fg=r:aaaaaa bg=r:0000aa
+26,2 ' ' fg=r:aaaaaa bg=r:0000aa
+27,2 ' ' fg=r:aaaaaa bg=r:0000aa
+28,2 ' ' fg=r:aaaaaa bg=r:0000aa
+29,2 ' ' fg=r:aaaaaa bg=r:0000aa
+30,2 ' ' fg=r:aaaaaa bg=r:0000aa
+31,2 ' ' fg=r:aaaaaa bg=r:0000aa
+32,2 ' ' fg=r:aaaaaa bg=r:0000aa
+33,2 ' ' fg=r:aaaaaa bg=r:0000aa
+34,2 ' ' fg=r:aaaaaa bg=r:0000aa
+35,2 ' ' fg=r:aaaaaa bg=r:0000aa
+36,2 ' ' fg=r:aaaaaa bg=r:0000aa
+37,2 ' ' fg=r:aaaaaa bg=r:0000aa
+38,2 ' ' fg=r:aaaaaa bg=r:0000aa
+39,2 '│' fg=r:aaaaaa bg=r:0000aa
+0,3 '│' fg=r:aaaaaa bg=r:0000aa
+1,3 ' ' fg=r:aaaaaa bg=r:0000aa
+2,3 ' ' fg=r:aaaaaa bg=r:0000aa
+3,3 ' ' fg=r:aaaaaa bg=r:0000aa
+4,3 ' ' fg=r:aaaaaa bg=r:0000aa
+5,3 ' ' fg=r:aaaaaa bg=r:0000aa
+6,3 ' ' fg=r:aaaaaa bg=r:0000aa
+7,3 ' ' fg=r:aaaaaa bg=r:0000aa
+8,3 ' ' fg=r:aaaaaa bg=r:0000aa
+9,3 ' ' fg=r:aaaaaa bg=r:0000aa
+10,3 ' ' fg=r:aaaaaa bg=r:0000aa
+11,3 ' ' fg=r:aaaaaa bg=r:0000aa
+12,3 ' ' fg=r:aaaaaa bg=r:0000aa
+13,3 ' ' fg=r:aaaaaa bg=r:0000aa
+14,3 ' ' fg=r:aaaaaa bg=r:0000aa
+15,3 ' ' fg=r:aaaaaa bg=r:0000aa
+16,3 ' ' fg=r:aaaaaa bg=r:0000aa
+17,3 ' ' fg=r:aaaaaa bg=r:0000aa
+18,3 ' ' fg=r:aaaaaa bg=r:0000aa
+19,3 ' ' fg=r:aaaaaa bg=r:0000aa
+20,3 ' ' fg=r:aaaaaa bg=r:0000aa
+21,3 ' ' fg=r:aaaaaa bg=r:0000aa
+22,3 ' ' fg=r:aaaaaa bg=r:0000aa
+23,3 ' ' fg=r:aaaaaa bg=r:0000aa
+24,3 ' ' fg=r:aaaaaa bg=r:0000aa
+25,3 ' ' fg=r:aaaaaa bg=r:0000aa
+26,3 ' ' fg=r:aaaaaa bg=r:0000aa
+27,3 ' ' fg=r:aaaaaa bg=r:0000aa
+28,3 ' ' fg=r:aaaaaa bg=r:0000aa
+29,3 ' ' fg=r:aaaaaa bg=r:0000aa
+30,3 ' ' fg=r:aaaaaa bg=r:0000aa
+31,3 ' ' fg=r:aaaaaa bg=r:0000aa
+32,3 ' ' fg=r:aaaaaa bg=r:0000aa
+33,3 ' ' fg=r:aaaaaa bg=r:0000aa
+34,3 ' ' fg=r:aaaaaa bg=r:0000aa
+35,3 ' ' fg=r:aaaaaa bg=r:0000aa
+36,3 ' ' fg=r:aaaaaa bg=r:0000aa
+37,3 ' ' fg=r:aaaaaa bg=r:0000aa
+38,3 ' ' fg=r:aaaaaa bg=r:0000aa
+39,3 '│' fg=r:aaaaaa bg=r:0000aa
+0,4 '└' fg=r:aaaaaa bg=r:0000aa
+1,4 '─' fg=r:aaaaaa bg=r:0000aa
+2,4 '─' fg=r:aaaaaa bg=r:0000aa
+3,4 '─' fg=r:aaaaaa bg=r:0000aa
+4,4 '─' fg=r:aaaaaa bg=r:0000aa
+5,4 '─' fg=r:aaaaaa bg=r:0000aa
+6,4 '─' fg=r:aaaaaa bg=r:0000aa
+7,4 '─' fg=r:aaaaaa bg=r:0000aa
+8,4 '─' fg=r:aaaaaa bg=r:0000aa
+9,4 '─' fg=r:aaaaaa bg=r:0000aa
+10,4 '─' fg=r:aaaaaa bg=r:0000aa
+11,4 '─' fg=r:aaaaaa bg=r:0000aa
+12,4 '─' fg=r:aaaaaa bg=r:0000aa
+13,4 '─' fg=r:aaaaaa bg=r:0000aa
+14,4 '─' fg=r:aaaaaa bg=r:0000aa
+15,4 '─' fg=r:aaaaaa bg=r:0000aa
+16,4 '─' fg=r:aaaaaa bg=r:0000aa
+17,4 '─' fg=r:aaaaaa bg=r:0000aa
+18,4 '─' fg=r:aaaaaa bg=r:0000aa
+19,4 '─' fg=r:aaaaaa bg=r:0000aa
+20,4 '─' fg=r:aaaaaa bg=r:0000aa
+21,4 '─' fg=r:aaaaaa bg=r:0000aa
+22,4 '─' fg=r:aaaaaa bg=r:0000aa
+23,4 '─' fg=r:aaaaaa bg=r:0000aa
+24,4 '─' fg=r:aaaaaa bg=r:0000aa
+25,4 '─' fg=r:aaaaaa bg=r:0000aa
+26,4 '─' fg=r:aaaaaa bg=r:0000aa
+27,4 '─' fg=r:aaaaaa bg=r:0000aa
+28,4 '─' fg=r:aaaaaa bg=r:0000aa
+29,4 '─' fg=r:aaaaaa bg=r:0000aa
+30,4 '─' fg=r:aaaaaa bg=r:0000aa
+31,4 '─' fg=r:aaaaaa bg=r:0000aa
+32,4 '─' fg=r:aaaaaa bg=r:0000aa
+33,4 '─' fg=r:aaaaaa bg=r:0000aa
+34,4 '─' fg=r:aaaaaa bg=r:0000aa
+35,4 '─' fg=r:aaaaaa bg=r:0000aa
+36,4 '─' fg=r:aaaaaa bg=r:0000aa
+37,4 '─' fg=r:aaaaaa bg=r:0000aa
+38,4 '─' fg=r:aaaaaa bg=r:0000aa
+39,4 '┘' fg=r:aaaaaa bg=r:0000aa
+0,5 'r'
+1,5 'o'
+2,5 'w'
+4,5 '1'
+0,6 'r'
+1,6 'o'
+2,6 'w'
+4,6 '2'
+0,7 'r'
+1,7 'o'
+2,7 'w'
+4,7 '3'
+0,8 'r'
+1,8 'o'
+2,8 'w'
+4,8 '4'

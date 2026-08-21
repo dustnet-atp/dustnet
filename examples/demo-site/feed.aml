@@ -1,0 +1,7 @@
+[page mode=document title="Feed fragment"]
+  [list style=bullet]
+    [item][text]Connection established[/text][/item]
+    [item][text]Page delivered[/text][/item]
+    [item][text]Subscription active[/text][/item]
+  [/list]
+[/page]

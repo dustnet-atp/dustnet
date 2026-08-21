@@ -1,0 +1,27 @@
+[page mode=document title="Live Region Demo" transition="dissolve" duration=400ms]
+  [heading level=1 fg=red]Live Content Demo[/heading]
+
+  [text]This page demonstrates live regions — content that updates[/text]
+  [text]in real time without reloading the page.[/text]
+
+  [spacer lines=1 /]
+
+  [text bold]How to test:[/text]
+  [list style=number]
+    [item][text]Open another terminal[/text][/item]
+    [item][text]Edit the server's live-region source to see it update[/text][/item]
+    [item][text]Save the file — this box updates automatically[/text][/item]
+  [/list]
+
+  [spacer lines=1 /]
+
+  [box w=50 h=5 border=double fg=cyan title="Live Region"]
+    [live id="clock" endpoint="/clock"]
+      [text dim]Connecting...[/text]
+    [/live]
+  [/box]
+
+  [spacer lines=1 /]
+
+  [link href="/"][text fg=cyan]← Back to directory[/text][/link]
+[/page]

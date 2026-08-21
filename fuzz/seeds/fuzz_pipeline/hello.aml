@@ -1,0 +1,28 @@
+[page mode=document title="Hello Dustnet"]
+  [header]
+    [text bold fg=cyan]Welcome to Dustnet[/text]
+  [/header]
+
+  [body]
+    [box border=double fg=green w=60 title="About"]
+      [text]Dustnet is a terminal-native network of BBS-like sites.[/text]
+      [text]Sites are linked together with animated transitions.[/text]
+    [/box]
+
+    [spacer lines=1 /]
+
+    [text dim]Navigate with arrow keys. Press q to quit.[/text]
+
+    [hr style=dash fg=yellow /]
+
+    [link href="atp://neon.city/" transition="dissolve"]
+      [text fg=bright-yellow]Visit Neon City[/text]
+    [/link]
+  [/body]
+
+  [footer]
+    [nav]
+      [text dim fg=white]Dustnet v0.1.0[/text]
+    [/nav]
+  [/footer]
+[/page]

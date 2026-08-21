@@ -1,0 +1,42 @@
+[package]
+name = "dustnet-client"
+version = "0.2.0-alpha.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Dustnet terminal client, compositor, navigation, and AML/WASM runtime"
+repository.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/dustnet-client"
+keywords = ["atp", "aml", "terminal", "tui", "client"]
+categories = ["network-programming", "command-line-interface"]
+
+[dependencies]
+arrayvec = "0.7"
+dustnet-core = { path = "../dustnet-core", version = "=0.2.0-alpha.1" }
+# Already in the graph via rustls; named directly for SHA-256 certificate
+# fingerprints in `trust`, so no crate enters the tree that was not vetted.
+ring = "0.17"
+rustls = { version = "0.23", features = ["ring"] }
+webpki-roots = "0.26"
+rcgen = "0.13"
+rustls-pki-types = { version = "1", features = ["std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "fs", "sync", "macros", "time", "signal"] }
+tokio-rustls = "0.26"
+futures-util = "0.3"
+unicode-width = "0.2"
+unicode-segmentation = "1.12"
+crossterm = { version = "0.28", features = ["event-stream"] }
+wasmi = "0.40"
+slotmap = "1.0"
+signal-hook = "0.3"
+triomphe = { version = "=0.1.16", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+dustnet-server = { path = "../dustnet-server", version = "=0.2.0-alpha.1" }
+tempfile = "3"
+# Tests only: reads the machine-readable claims under `verification/` so no
+# test parses prose. Already in the workspace lock via tracing-subscriber.
+serde_json = "1"
+
+[lints]
+workspace = true

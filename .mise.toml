@@ -1,0 +1,9 @@
+# Pinned, not "latest". An unpinned toolchain means a compiler release can turn
+# the gate red with no change to this repository, and means the Miri and ASan
+# Miri and ASan gates describe a compiler nobody can reproduce.
+#
+# This must match `channel` in `rust-toolchain.toml`. `make ci-preflight`
+# checks that it does, so the duplication is a checked invariant rather than a
+# drift risk.
+[tools]
+rust = "1.94.0"

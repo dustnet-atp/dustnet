@@ -1,0 +1,7 @@
+[page mode=document]
+[panel id="tabs" state="one"]
+[state name="one"][text]One[/text][/state]
+[state name="two"][text]Two[/text][/state]
+[/panel]
+[button action=set target="tabs" to="two"]Switch[/button]
+[/page]

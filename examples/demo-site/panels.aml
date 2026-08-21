@@ -1,0 +1,47 @@
+[page mode=document title="Panels"]
+
+  [heading level=1 fg=bright-cyan]Panels and state[/heading]
+  [link href="/"][text dim]< back to index[/text][/link]
+  [spacer lines=1 /]
+
+  [text]A panel holds several named states and shows one at a time. A button
+  targeting the panel cycles between them, and the client relays out only the
+  affected subtree.[/text]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Toggle[/heading]
+  [panel id="sound" state="off"]
+    [state name="off"][text]Sound: [text fg=red]off[/text][/text][/state]
+    [state name="on"][text]Sound: [text fg=green bold]on[/text][/text][/state]
+  [/panel]
+  [button action="toggle" target="sound" states="off,on" key="s"]Toggle sound[/button]
+  [spacer lines=1 /]
+
+  [hr style=dash /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Drawer with a transition[/heading]
+  [panel id="detail" state="closed"]
+    [state name="closed" h=1]
+      [text dim]> Connection detail[/text]
+    [/state]
+    [state name="open" h=fit transition="slide-down" duration=200ms]
+      [text dim]v Connection detail[/text]
+      [box border=single fg=white]
+        [text]Transport: TLS 1.3[/text]
+        [text]Origin:    example.test:1985[/text]
+        [text]Session:   origin-scoped[/text]
+      [/box]
+    [/state]
+  [/panel]
+  [button action="toggle" target="detail" states="closed,open" key="d"]Toggle detail[/button]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Three-way state[/heading]
+  [panel id="mode" state="read"]
+    [state name="read"][text fg=cyan]Mode: read[/text][/state]
+    [state name="write"][text fg=yellow]Mode: write[/text][/state]
+    [state name="admin"][text fg=red bold]Mode: admin[/text][/state]
+  [/panel]
+  [button action="toggle" target="mode" states="read,write,admin" key="m"]Cycle mode[/button]
+[/page]

@@ -1,0 +1,4 @@
+[page mode=document title="Status fragment"]
+  [text fg=green bold]All systems nominal[/text]
+  [text dim]Edit this file while it is subscribed to see the region update.[/text]
+[/page]

@@ -1,0 +1,33 @@
+[page mode=document title="Forms"]
+
+  [heading level=1 fg=bright-cyan]Forms and input[/heading]
+  [link href="/"][text dim]< back to index[/text][/link]
+  [spacer lines=1 /]
+
+  [text]Tab moves focus between controls; Enter activates the focused one.
+  Submitting sends the field values back to the server, which answers with a
+  new page.[/text]
+  [spacer lines=1 /]
+
+  [box border=single fg=white title="Sign in"]
+    [form action="/forms"]
+      [input name="username" placeholder="Username" /]
+      [input name="password" placeholder="Password" password /]
+      [select name="scope" label="Session scope:"]
+        [option value="this-origin" selected]This origin only[/option]
+        [option value="ephemeral"]Ephemeral[/option]
+      [/select]
+      [spacer lines=1 /]
+      [button action=submit]Sign in[/button]
+    [/form]
+  [/box]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Controls without an id[/heading]
+  [text dim]A control carries a name so its value can be submitted, but needs no
+  authored id to be focusable and activatable.[/text]
+  [form action="/forms"]
+    [input name="note" placeholder="Anything you like" /]
+    [button action=submit]Send[/button]
+  [/form]
+[/page]

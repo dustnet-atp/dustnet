@@ -1,0 +1,26 @@
+[page mode=document title="Transitions"]
+
+  [heading level=1 fg=bright-cyan]Page transitions[/heading]
+  [link href="/"][text dim]< back to index[/text][/link]
+  [spacer lines=1 /]
+
+  [text]A link may name the transition used when its target arrives. The client
+  captures the outgoing page, paints the transition over it, and installs the
+  new page underneath. Each page below returns here.[/text]
+  [spacer lines=1 /]
+
+  [nav]
+    [link href="/transitions/fade" transition="fade" duration=300ms]
+      [text fg=bright-white]fade[/text]
+    [/link]
+    [link href="/transitions/dissolve" transition="dissolve" duration=400ms]
+      [text fg=bright-white]dissolve[/text]
+    [/link]
+    [link href="/transitions/slide" transition="slide-left" duration=250ms]
+      [text fg=bright-white]slide-left[/text]
+    [/link]
+    [link href="/transitions/cut" transition="cut"]
+      [text fg=bright-white]cut[/text]
+    [/link]
+  [/nav]
+[/page]

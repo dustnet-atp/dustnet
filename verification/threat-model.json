@@ -1,0 +1,187 @@
+{
+  "description": "Threat model for the Dustnet client. Authoritative source for the adversaries assumed hostile and for the control and evidence answering each. Read by tools/allocation-audit: an adversary with no coverage row, a row naming an undeclared property, or a row whose evidence is neither a test function nor a make target fails the build. docs/spec/07-security.md describes the controls in prose.",
+  "trusted": [
+    "operating system",
+    "terminal emulator"
+  ],
+  "out_of_scope": [
+    "compromised hosts",
+    "malicious operator-installed server extensions"
+  ],
+  "properties": [
+    "origin isolation",
+    "terminal integrity",
+    "bounded resource use",
+    "local confidentiality"
+  ],
+  "adversaries": [
+    {
+      "name": "Remote ATP server",
+      "description": "chooses every byte the client parses, renders and admits, and controls when a connection stalls or dies.",
+      "coverage": [
+        {
+          "property": "bounded resource use",
+          "control": "Resource Exhaustion",
+          "evidence": "allocation-audit"
+        },
+        {
+          "property": "origin isolation",
+          "control": "Site Isolation",
+          "evidence": "security_context_partitions_otherwise_equal_origins"
+        }
+      ]
+    },
+    {
+      "name": "Malicious AML",
+      "description": "hostile markup: escape sequences, bidirectional and invisible formatting, pathological nesting, oversized payloads, degenerate layout.",
+      "coverage": [
+        {
+          "property": "terminal integrity",
+          "control": "Terminal Escape Sequence Injection",
+          "evidence": "strips_ansi_color_from_text"
+        },
+        {
+          "property": "terminal integrity",
+          "control": "Terminal Escape Sequence Injection",
+          "evidence": "strips_8bit_csi"
+        },
+        {
+          "property": "terminal integrity",
+          "control": "Terminal Escape Sequence Injection",
+          "evidence": "strips_bidi_override_from_text"
+        },
+        {
+          "property": "terminal integrity",
+          "control": "Terminal Escape Sequence Injection",
+          "evidence": "strips_zero_width_formatting"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Resource Exhaustion",
+          "evidence": "rejects_deep_nesting"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Resource Exhaustion",
+          "evidence": "ci-fuzz-smoke"
+        }
+      ]
+    },
+    {
+      "name": "WASM module",
+      "description": "server-supplied code, confined to a draw-only sandbox with fuel and memory budgets.",
+      "coverage": [
+        {
+          "property": "bounded resource use",
+          "control": "AML Animations Are Not Computation",
+          "evidence": "wasm_enforces_per_guest_and_guest_count_limits"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "AML Animations Are Not Computation",
+          "evidence": "dense_backgrounds_fit_the_runtime_fuel_budget"
+        }
+      ]
+    },
+    {
+      "name": "Redirect",
+      "description": "an attempt to move a session across an origin or security context without the user's knowledge.",
+      "coverage": [
+        {
+          "property": "origin isolation",
+          "control": "Link and URI Attacks",
+          "evidence": "cross_origin_redirect_is_returned_to_the_reducer"
+        },
+        {
+          "property": "origin isolation",
+          "control": "Link and URI Attacks",
+          "evidence": "rejects_http_scheme"
+        }
+      ]
+    },
+    {
+      "name": "Live update",
+      "description": "unsolicited server-pushed content into a subscribed region, arriving at a rate and size the server chooses.",
+      "coverage": [
+        {
+          "property": "bounded resource use",
+          "control": "Resource Exhaustion",
+          "evidence": "region_row_rejection_keeps_the_previous_generation_and_recovers"
+        },
+        {
+          "property": "origin isolation",
+          "control": "Session Security",
+          "evidence": "transport_loss_for_another_security_partition_is_ignored"
+        }
+      ]
+    },
+    {
+      "name": "Protocol sequence",
+      "description": "frames that are individually well-formed but out of order, unsolicited, or mis-scoped.",
+      "coverage": [
+        {
+          "property": "origin isolation",
+          "control": "Input Validation",
+          "evidence": "stale_preparations_and_control_tokens_cannot_mutate_the_active_page"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Input Validation",
+          "evidence": "ci-tools"
+        }
+      ]
+    },
+    {
+      "name": "Network observer",
+      "description": "can read or tamper with traffic in transit, including by presenting a certificate of its own to a client that has no authority to check it against.",
+      "coverage": [
+        {
+          "property": "local confidentiality",
+          "control": "TLS Requirements",
+          "evidence": "malformed_tls_material_is_rejected_before_serving"
+        },
+        {
+          "property": "local confidentiality",
+          "control": "TLS Requirements",
+          "evidence": "invalid_tls_handshake_is_closed_without_stopping_the_listener"
+        },
+        {
+          "property": "local confidentiality",
+          "control": "Development / Self-Signed Certificates",
+          "evidence": "a_pinned_certificate_is_accepted_and_a_changed_one_is_refused"
+        },
+        {
+          "property": "local confidentiality",
+          "control": "Development / Self-Signed Certificates",
+          "evidence": "certificate_authority_verification_reports_what_it_refused"
+        },
+        {
+          "property": "origin isolation",
+          "control": "Development / Self-Signed Certificates",
+          "evidence": "a_store_other_users_can_write_is_refused"
+        },
+        {
+          "property": "local confidentiality",
+          "control": "Development / Self-Signed Certificates",
+          "evidence": "an_unverifiable_site_is_reported_then_reachable_once_pinned"
+        }
+      ]
+    },
+    {
+      "name": "Other users",
+      "description": "share a site or a client machine but must not share session state.",
+      "coverage": [
+        {
+          "property": "origin isolation",
+          "control": "Session Security",
+          "evidence": "generated_origin_matrix_partitions_session_state"
+        },
+        {
+          "property": "local confidentiality",
+          "control": "Information Leakage",
+          "evidence": "directives_reject_non_absolute_or_traversing_scopes"
+        }
+      ]
+    }
+  ]
+}

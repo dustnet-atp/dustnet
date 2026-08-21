@@ -1,0 +1,31 @@
+[page mode=document title="Message Board — Neon City"]
+  [heading level=1 fg=cyan]Message Board[/heading]
+  [text dim]Public discussion — newest first[/text]
+  [hr style=dash fg=cyan /]
+  [spacer lines=1 /]
+
+{{messages}}
+
+  [hr style=heavy fg=tttttttttttttttttttttttttttttttcyan /]
+
+  [text align=center dim]— end of messages —[/text]
+  [spacer lines=1 /]
+
+  [box border=rounded fg=cyan w=55 title="Post a Reply"]
+    [form action="/board"]
+      [text fg=cyan]Name:[/text]
+      [input name="name" placeholder="your handle" maxlen=20 /]
+      [spacer lines=1 /]
+      [text fg=cyan]Message:[/text]
+      [input name="msg" placeholder="what's on your mind?" maxlen=200 /]
+      [spacer lines=1 /]
+      [button action=submitMPost Message[/button]
+    [/form]
+  [/box]
+
+  [spacer lines=1 /]
+
+  [link href="/" transition="slide-right" transition_duration_ms=250]
+    [text fg=cyan]← Back to directory[/text]
+  [/link]
+[/page]

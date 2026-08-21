@@ -1,0 +1,14 @@
+[page mode=document title="Matrix Rain"]
+
+  [heading level=1 fg=bright-green]The Matrix[/heading]
+  [text dim]Digital rain — falling green characters.[/text]
+  [spacer lines=1 /]
+
+  [animate id="matrix" src="/effects/matrix_rain.wasm" fps=15 loop=true]
+    [spacer lines=24 /]
+  [/animate]
+
+  [spacer lines=1 /]
+  [hr style=heavy fg=green /]
+  [text align=center dim]Press q to quit.[/text]
+[/page]

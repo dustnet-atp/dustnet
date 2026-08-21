@@ -1,0 +1,80 @@
+
+# cargo-vet audits file
+
+[[audits.aho-corasick]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "1.1.5"
+notes = "Reviewed full source, including sealed automata, packed SIMD runtime feature gating, raw-pointer bounds, pattern comparisons, and DFA invariants. No build script or ambient capabilities."
+
+[[audits.itoa]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "1.0.18"
+notes = "Reviewed full source, including every buffer write and pointer cast, initialized suffix length, lookup-table index, signed edge case, and u128 decomposition. No build script or ambient capabilities."
+
+[[audits.regex-automata]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "0.4.18"
+notes = "Reviewed full source, including lazy initialization, thread pool ownership, aligned wire casts, validated DFA deserialization, accelerators, and unchecked transition contracts. No build script or ambient capabilities."
+
+[[audits.regex-syntax]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "0.8.11"
+notes = "Reviewed full source, parser and translator limits, Unicode property handling, interval canonicalization, and error paths. The crate forbids unsafe code and has no build script or ambient capabilities."
+
+[[audits.serde_json]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "1.0.151"
+notes = "Reviewed full source, parser limits, UTF-8 and RawValue invariants, buffer initialization, and build-script target probes. No unadvertised ambient capabilities."
+
+[[audits.thread_local]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "1.1.10"
+notes = "Reviewed full source, including bucket allocation and destruction, raw pointers, MaybeUninit, atomic ordering, thread IDs, iterator lifetimes, and reentrant initialization. No build script or ambient capabilities."
+
+[[audits.tracing]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "0.1.44"
+notes = "Reviewed full source, macro expansion and ValueSet construction, raw-identifier FieldName UTF-8 invariant, spans and dispatch, record_all, static level filtering, and no_std paths. No build script or ambient capabilities."
+
+[[audits.tracing-attributes]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "0.1.31"
+notes = "Reviewed full source of the proc-macro crate, including constant and raw field-name parsing, token emission, duplicate handling, and generated tracing calls. No unsafe code, build script, or ambient capabilities."
+
+[[audits.tracing-core]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "0.1.36"
+notes = "Reviewed full source, including no_std synchronization, callsites, dispatch, metadata, ValueSet iteration, refcounting, and all unsafe downcast and level-invariant sites. No build script or ambient capabilities."
+
+[[audits.tracing-serde]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "0.2.0"
+notes = "Reviewed full source. Pure serde adapters for tracing metadata, events, attributes, and records; no unsafe code, build script, or ambient capabilities."
+
+[[audits.tracing-subscriber]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "0.3.23"
+notes = "Reviewed full source and features, including registry storage and refcounts, thread-local span stacks, layered dispatch, filters and reload, ANSI sanitization, writers, and all unsafe downcasts. Advertised environment and writer access only; no build script."
+
+[[audits.triomphe]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "0.1.16"
+notes = "Reviewed triomphe 0.1.16 full source and unsafe code for safe-to-deploy, with Dustnet using only std-feature Arc::try_new, clone/drop/deref, and ptr_eq. Fallible allocation layout/null handling and Arc refcount ordering are sound. No ambient capabilities or build script. Known non-security caveats: pointer-shortcut PartialEq for non-reflexive T and documented leak-on-panicking or misreporting header iterators; neither is used by Dustnet."
+
+[[audits.zmij]]
+who = "Dustnet maintainers"
+criteria = "safe-to-deploy"
+version = "1.0.23"
+notes = "Reviewed full source, including float decomposition, power tables and index ranges, SIMD architecture gating, all buffer writes, exponent formatting, and compiler/optimization build-script probes. Default tests and randomized ryu comparison pass."

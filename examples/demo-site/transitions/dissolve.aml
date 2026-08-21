@@ -1,0 +1,13 @@
+[page mode=document title="Transition: dissolve"]
+
+  [heading level=1 fg=bright-cyan]dissolve[/heading]
+  [spacer lines=1 /]
+
+  [box border=double fg=cyan title="Arrived"]
+    [text]This page was installed with the [text bold]dissolve[/text] transition.[/text]
+  [/box]
+  [spacer lines=1 /]
+
+  [link href="/transitions" transition="dissolve"][text dim]< back to transitions[/text][/link]
+  [link href="/"][text dim]< back to index[/text][/link]
+[/page]

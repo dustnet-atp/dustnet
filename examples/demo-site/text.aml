@@ -1,0 +1,52 @@
+[page mode=document title="Text"]
+
+  [heading level=1 fg=bright-cyan]Text and typography[/heading]
+  [link href="/"][text dim]< back to index[/text][/link]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Styles[/heading]
+  [text bold]Bold[/text]
+  [text italic]Italic[/text]
+  [text underline]Underline[/text]
+  [text strikethrough]Strikethrough[/text]
+  [text dim]Dim[/text]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Colour[/heading]
+  [text fg=red]Named foreground[/text]
+  [text fg=green bg=black]Named foreground on background[/text]
+  [text fg=#ff6600]Hex truecolour[/text]
+  [text fg=bright-magenta]Bright variant[/text]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Nesting and wrapping[/heading]
+  [text]Inline spans nest, so a sentence can carry [text bold]emphasis[/text] and
+  [text fg=cyan]colour[/text] without leaving the paragraph. Long paragraphs wrap
+  at the region width rather than at the terminal edge, which is what makes a
+  narrow column readable next to a wide one.[/text]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Headings[/heading]
+  [heading level=1]Level one[/heading]
+  [heading level=2]Level two[/heading]
+  [heading level=3]Level three[/heading]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Rules[/heading]
+  [hr style=single /]
+  [hr style=double /]
+  [hr style=heavy /]
+  [hr style=dash /]
+  [hr style=dot /]
+  [hr style=ascii /]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Preformatted[/heading]
+  [pre fg=cyan]
+   .-------------------.
+   |  preformatted     |
+   |  text keeps its   |
+   |  own line breaks  |
+   '-------------------'
+  [/pre]
+[/page]

@@ -1,0 +1,361 @@
+[page mode=document title="Transition Animations"]
+
+  [heading level=1 fg=bright-cyan]Transition Animations[/heading]
+  [text dim]Multi-line frame animations. All frames must be the same size.[/text]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Unfurl Down (5fps)[/heading]
+  [animate id="unfurl-down" fps=5 loop=false]
+    [frame][pre fg=cyan]
+.-------------------------------'
+
+
+
+
+
+
+    [/pre][/frame]
+    [frame][pre fg=cyan]
+.-------------------------------.
+|                               |
+'-------------------------------'
+
+
+
+
+    [/pre][/frame]
+    [frame][pre fg=cyan]
+.-------------------------------.
+|                               |
+|   Welcome to the network      |
+'-------------------------------'
+
+
+
+    [/pre][/frame]
+    [frame][pre fg=cyan]
+.-------------------------------.
+|                               |
+|   Welcome to the network      |
+|   Connection established      |
+'-------------------------------'
+
+
+    [/pre][/frame]
+    [frame][pre fg=cyan]
+.-------------------------------.
+|                               |
+|   Welcome to the network      |
+|   Connection established      |
+|   Status: ONLINE              |
+'-------------------------------'
+
+    [/pre][/frame]
+    [frame][pre fg=cyan]
+.-------------------------------.
+|                               |
+|   Welcome to the network      |
+|   Connection established      |
+|   Status: ONLINE              |
+|                               |
+'-------------------------------'
+    [/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Expand From Center (6fps)[/heading]
+  [animate id="center-expand" fps=6 loop=false]
+    [frame][pre fg=green]
+
+
+               .
+
+
+
+
+    [/pre][/frame]
+    [frame][pre fg=green]
+
+              .-.
+              | |
+              '-'
+
+
+
+    [/pre][/frame]
+    [frame][pre fg=green]
+
+           .-------.
+           |       |
+           |  OK   |
+           |       |
+           '-------'
+
+    [/pre][/frame]
+    [frame][pre fg=green]
+
+        .-------------.
+        |             |
+        |   STATUS    |
+        |     OK      |
+        '-------------'
+
+    [/pre][/frame]
+    [frame][pre fg=green]
+     .-------------------.
+     |                   |
+     |   SYSTEM STATUS   |
+     |       OK          |
+     |   All services    |
+     |   operational     |
+     '-------------------'
+    [/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Wipe Right (8fps)[/heading]
+  [animate id="wipe-right" fps=8 loop=false]
+    [frame][pre fg=magenta]
+.
+|
+|
+'
+    [/pre][/frame]
+    [frame][pre fg=magenta]
+.------.
+|      |
+|      |
+'------'
+    [/pre][/frame]
+    [frame][pre fg=magenta]
+.------------.
+|  INCO      |
+|  MING      |
+'------------'
+    [/pre][/frame]
+    [frame][pre fg=magenta]
+.-------------------.
+|  INCOMING         |
+|  MESSAGE          |
+'-------------------'
+    [/pre][/frame]
+    [frame][pre fg=magenta]
+.-------------------------.
+|  INCOMING               |
+|  MESSAGE RECEIVED       |
+'-------------------------'
+    [/pre][/frame]
+    [frame][pre fg=magenta]
+.-------------------------------.
+|  INCOMING                     |
+|  MESSAGE RECEIVED             |
+'-------------------------------'
+    [/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Wipe Left (8fps)[/heading]
+  [animate id="wipe-left" fps=8 loop=false]
+    [frame][pre fg=red]
+                               |
+                               |
+                               |
+                               |
+    [/pre][/frame]
+    [frame][pre fg=red]
+                        .------.
+                        |      |
+                        |      |
+                        '------'
+    [/pre][/frame]
+    [frame][pre fg=red]
+                  .------------.
+                  |     ALERT! |
+                  |   WARNING  |
+                  '------------'
+    [/pre][/frame]
+    [frame][pre fg=red]
+           .-------------------.
+           |            ALERT! |
+           |   WARNING FOUND   |
+           '-------------------'
+    [/pre][/frame]
+    [frame][pre fg=red]
+     .-------------------------.
+     |                  ALERT! |
+     |         WARNING FOUND   |
+     '-------------------------'
+    [/pre][/frame]
+    [frame][pre fg=red]
+.-------------------------------.
+|                        ALERT! |
+|               WARNING FOUND   |
+'-------------------------------'
+    [/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Typewriter Box (4fps)[/heading]
+  [animate id="typewriter-box" fps=4 loop=false]
+    [frame][pre fg=white]
+.-------------------------------.
+| _                             |
+'-------------------------------'
+    [/pre][/frame]
+    [frame][pre fg=white]
+.-------------------------------.
+| Sy_                           |
+'-------------------------------'
+    [/pre][/frame]
+    [frame][pre fg=white]
+.-------------------------------.
+| Syste_                        |
+'-------------------------------'
+    [/pre][/frame]
+    [frame][pre fg=white]
+.-------------------------------.
+| System _                      |
+'-------------------------------'
+    [/pre][/frame]
+    [frame][pre fg=white]
+.-------------------------------.
+| System rea_                   |
+'-------------------------------'
+    [/pre][/frame]
+    [frame][pre fg=white]
+.-------------------------------.
+| System ready_                 |
+'-------------------------------'
+    [/pre][/frame]
+    [frame][pre fg=white]
+.-------------------------------.
+| System ready.                 |
+'-------------------------------'
+    [/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Radar Sweep (6fps, infinite)[/heading]
+  [animate id="radar" fps=6 loop=true]
+    [frame][pre fg=green]
+    .---.
+   /  |  \
+  |   |   |
+  |   +   |
+  |       |
+   \     /
+    '---'
+    [/pre][/frame]
+    [frame][pre fg=green]
+    .---.
+   /    /\
+  |   / . |
+  |  +    |
+  |       |
+   \     /
+    '---'
+    [/pre][/frame]
+    [frame][pre fg=green]
+    .---.
+   /     \
+  |   .---+
+  |   +   |
+  |       |
+   \     /
+    '---'
+    [/pre][/frame]
+    [frame][pre fg=green]
+    .---.
+   /     \
+  |   .   |
+  |   + . |
+  |    \  |
+   \    \/
+    '---'
+    [/pre][/frame]
+    [frame][pre fg=green]
+    .---.
+   /     \
+  |   .   |
+  |   +   |
+  |   |   |
+   \  |  /
+    '---'
+    [/pre][/frame]
+    [frame][pre fg=green]
+    .---.
+   /     \
+  |   .   |
+  | . +   |
+  |  /    |
+   \/    /
+    '---'
+    [/pre][/frame]
+    [frame][pre fg=green]
+    .---.
+   /     \
+  +---.   |
+  |   +   |
+  |       |
+   \     /
+    '---'
+    [/pre][/frame]
+    [frame][pre fg=green]
+    .---.
+   /\    \
+  | . \   |
+  |    +  |
+  |       |
+   \     /
+    '---'
+    [/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Loading Bar (3fps)[/heading]
+  [animate id="loading" fps=3 loop=false]
+    [frame][pre fg=yellow][[..........]] Connecting...   [/pre][/frame]
+    [frame][pre fg=yellow][[##........]] Connecting...   [/pre][/frame]
+    [frame][pre fg=yellow][[####......]] Authenticating..[/pre][/frame]
+    [frame][pre fg=yellow][[######....]] Authenticating..[/pre][/frame]
+    [frame][pre fg=yellow][[########..]] Loading profile.[/pre][/frame]
+    [frame][pre fg=green][[##########]] Connected!      [/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [heading level=2 fg=yellow]Pulsing Border (4fps, infinite)[/heading]
+  [animate id="pulse" fps=4 loop=true]
+    [frame][pre fg=cyan]
+.           .
+
+  TERMINAL
+
+.           .
+    [/pre][/frame]
+    [frame][pre fg=cyan]
+.-----------.
+|           |
+| TERMINAL  |
+|           |
+'-----------'
+    [/pre][/frame]
+    [frame][pre fg=bright-cyan]
++===========-
+||         ||
+|| TERMINAL||
+||         ||
+-===========+
+    [/pre][/frame]
+    [frame][pre fg=cyan]
+.-----------.
+|           |
+| TERMINAL  |
+|           |
+'-----------'
+    [/pre][/frame]
+  [/animate]
+  [spacer lines=1 /]
+
+  [hr style=heavy fg=cyan /]
+  [text align=center dim]End of transition animations demo[/text]
+[/page]

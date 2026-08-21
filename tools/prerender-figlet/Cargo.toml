@@ -1,0 +1,11 @@
+[package]
+name = "dustnet-prerender-figlet"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lints.rust]
+unsafe_code = "forbid"
+

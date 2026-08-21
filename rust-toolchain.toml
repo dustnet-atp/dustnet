@@ -1,0 +1,17 @@
+# The stable toolchain the gate runs on, pinned so that a compiler release
+# cannot turn `make ci` red with no change to this repository.
+#
+# Components and targets are declared here rather than installed by hand:
+# rustup adds them on first use in this directory, so a fresh clone needs no
+# setup step. `make ci-preflight` checks they actually arrived, and checks that
+# `.mise.toml` pins the same version — the two files are the only place this
+# string appears, and preflight is what stops them drifting apart.
+#
+# The nightly used by `ci-miri`, `ci-asan` and `ci-fuzz-smoke` cannot be pinned
+# here, because those targets invoke it explicitly with `cargo +<toolchain>`.
+# It is pinned as `NIGHTLY` in the Makefile.
+[toolchain]
+channel = "1.94.0"
+components = ["clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"
