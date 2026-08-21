@@ -7,6 +7,71 @@ inside a fuel- and memory-limited, draw-only WASM interpreter.
 
 The premise: what if the web had been built for terminals?
 
+## Connecting to a site
+
+There is a live site at `dustnet.io`. Any of the three routes below ends at the
+same command, so pick whichever suits how much you want installed.
+
+### From crates.io
+
+`0.2.0-alpha.1` is a pre-release, so its version has to be named. Cargo does
+not select pre-release versions for a bare requirement, which is why a plain
+`cargo install dustnet` reports that it cannot find the crate.
+
+```console
+cargo install dustnet --version 0.2.0-alpha.1 --locked
+dustnet connect atp://dustnet.io
+```
+
+### From source
+
+```console
+git clone https://github.com/roobert/dustnet
+cd dustnet
+cargo run --release --locked -p dustnet -- connect atp://dustnet.io
+```
+
+### With Docker
+
+Build once. The result carries the client and nothing else — the Rust
+toolchain stays behind in the discarded build stage.
+
+```console
+docker build -t dustnet - <<'EOF'
+FROM rust:1.94-slim AS b
+RUN cargo install dustnet --version 0.2.0-alpha.1 --locked --root /out
+FROM debian:trixie-slim
+COPY --from=b /out/bin/dustnet /usr/local/bin/
+ENTRYPOINT ["dustnet"]
+EOF
+
+mkdir -p ~/.config/dustnet
+```
+
+Then, for each run:
+
+```console
+docker run --rm -it \
+  -e TERM=xterm-256color \
+  --user "$(id -u):$(id -g)" \
+  --read-only --tmpfs /tmp \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --pids-limit 128 --memory 512m \
+  -e HOME=/state \
+  -v "$HOME/.config/dustnet:/state/.config/dustnet" \
+  dustnet connect atp://dustnet.io
+```
+
+The container is disposable but `~/.config/dustnet` is not, and that split is
+deliberate. Pinning earns its value by remembering: a client that forgets every
+time treats every visit as a first visit, and a fingerprint prompt that appears
+on every run is one nobody reads. The flags above drop every capability, keep
+the root filesystem read-only, and run as you rather than as root, because the
+client parses wire data and runs remote WASM from hosts it does not control.
+
+## About AML and ATP
+
 AML describes layout, text, colour, interactive elements and animation, but
 never logic — it is not Turing-complete and has no scripting capability. ATP
 runs over TLS 1.3 on TCP, port 1985.
@@ -21,7 +86,7 @@ verification is our own — there is no external review or sign-off.
 authority on what is supported, previewed and out of scope, and on which
 platforms carry a verified gate.
 
-## Using it
+## Other commands
 
 ```console
 dustnet render page.aml
