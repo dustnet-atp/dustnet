@@ -20,6 +20,7 @@ mod certs;
 pub mod include;
 pub mod input;
 mod live_watch;
+pub mod session;
 mod transport;
 
 use std::collections::HashMap;
@@ -293,6 +294,7 @@ pub struct StaticServerConfig {
     read_timeout: Duration,
     resolver: Option<Arc<dyn crate::include::IncludeResolver>>,
     input_handler: Option<Arc<dyn crate::input::InputHandler>>,
+    session_resolver: Option<Arc<dyn crate::session::SessionResolver>>,
 }
 
 impl StaticServerConfig {
@@ -315,6 +317,7 @@ impl StaticServerConfig {
             read_timeout: READ_TIMEOUT,
             resolver: None,
             input_handler: None,
+            session_resolver: None,
         })
     }
 
@@ -341,6 +344,19 @@ impl StaticServerConfig {
     /// submission, and it is the only way this server changes anything on disk.
     pub fn with_input_handler(mut self, handler: Arc<dyn crate::input::InputHandler>) -> Self {
         self.input_handler = Some(handler);
+        self
+    }
+
+    /// Install a resolver that turns a session token into an identity.
+    ///
+    /// Without one every request is anonymous, whatever token it carries.
+    /// Installing one is what makes a site able to know who is asking — and the
+    /// token goes no further than this resolver: handlers are told the identity.
+    pub fn with_session_resolver(
+        mut self,
+        resolver: Arc<dyn crate::session::SessionResolver>,
+    ) -> Self {
+        self.session_resolver = Some(resolver);
         self
     }
 
@@ -451,6 +467,7 @@ impl StaticServer {
         let root = Arc::new(config.root);
         let resolver = config.resolver;
         let input_handler = config.input_handler;
+        let session_resolver = config.session_resolver;
         let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_connections));
 
         // One reader for the whole server. Every connection subscribing to a
@@ -504,6 +521,7 @@ impl StaticServer {
                     let root = root.clone();
                     let resolver = resolver.clone();
                     let input_handler = input_handler.clone();
+                    let session_resolver = session_resolver.clone();
                     let counts = per_ip.clone();
                     let subscription_budget = subscription_budget.clone();
                     let connection_shutdown = self.shutdown_rx.clone();
@@ -520,10 +538,12 @@ impl StaticServer {
                             Ok(Ok(stream)) => {
                                 match serve_connection(
                                     stream,
-                                    SiteContext {
+                                    ConnectionContext {
                                         root: &root,
                                         resolver: resolver.as_deref(),
                                         input_handler: input_handler.as_deref(),
+                                        session_resolver: session_resolver.as_deref(),
+                                        peer: peer.ip(),
                                     },
                                     subscription_budget,
                                     watcher,
@@ -577,7 +597,7 @@ impl StaticServer {
 
 async fn serve_connection(
     mut stream: AtpServerStream,
-    site: SiteContext<'_>,
+    site: ConnectionContext<'_>,
     subscription_budget: SubscriptionBudget,
     watcher: LiveWatcher,
     read_timeout: Duration,
@@ -735,33 +755,46 @@ async fn serve_connection(
     }
 }
 
-/// What a connection needs to answer a request: where the site lives, and the
-/// optional hooks that let it generate content and accept submissions.
+/// What a connection needs to answer a request: where the site lives, the
+/// optional hooks that let it generate content and accept submissions, and who
+/// the peer is.
 ///
-/// Bundled rather than passed separately because these three always travel
-/// together and are all `None`-by-default policy, not per-request state.
+/// Bundled because they all travel together for the life of a connection. The
+/// hooks are `None`-by-default policy; `peer` is the one piece of per-connection
+/// state, and it is here rather than threaded separately because a submission
+/// cannot be rate-limited per source without it.
 #[derive(Clone, Copy)]
-struct SiteContext<'a> {
+struct ConnectionContext<'a> {
     root: &'a Path,
     resolver: Option<&'a dyn crate::include::IncludeResolver>,
     input_handler: Option<&'a dyn crate::input::InputHandler>,
+    session_resolver: Option<&'a dyn crate::session::SessionResolver>,
+    /// The peer's address. Given to a submission handler for abuse control, and
+    /// deliberately **not** to the include resolver: rendering a page has no
+    /// business knowing where the reader is.
+    peer: std::net::IpAddr,
 }
 
 async fn serve_get(
     stream: &mut AtpServerStream,
-    site: SiteContext<'_>,
+    site: ConnectionContext<'_>,
     frame: RawFrame,
 ) -> Result<(), ProtocolError> {
     let text = std::str::from_utf8(&frame.body)
         .map_err(|_| ProtocolError::InvalidMessage("GET is not UTF-8".into()))?;
     let get = GetMessage::parse(text)?;
     tracing::debug!(path = %get.path, "GET");
+    // The token is resolved here and only the identity travels on. Nothing
+    // below this line sees the token, which is the point of `crate::session`.
+    let identity = resolve_identity(site.session_resolver, get.session.as_deref());
     serve_path(
         stream,
         site.root,
         site.resolver,
         &get.path,
         get.query.as_deref(),
+        identity.as_deref(),
+        Vec::new(),
     )
     .await
 }
@@ -771,12 +804,27 @@ async fn serve_get(
 /// Shared by GET and by an accepted submission, which is the point: a page
 /// looks the same whether it was asked for or arrived at by submitting a form,
 /// because it is produced by the same code.
+/// Turn a presented token into an identity, or `None`.
+///
+/// `None` covers no token, no resolver, and a token the resolver did not
+/// recognise. Collapsing those is deliberate: a caller that could tell them
+/// apart would be an oracle for whether a token had ever existed.
+fn resolve_identity(
+    resolver: Option<&dyn crate::session::SessionResolver>,
+    token: Option<&str>,
+) -> Option<String> {
+    resolver?.identity(token?)
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn serve_path(
     stream: &mut AtpServerStream,
     root: &Path,
     resolver: Option<&dyn crate::include::IncludeResolver>,
     request_path: &str,
     query: Option<&str>,
+    identity: Option<&str>,
+    session_directives: Vec<dustnet_core::session::SessionDirective>,
 ) -> Result<(), ProtocolError> {
     let path = resolve_path(root, request_path).await?;
     let limit = if path
@@ -830,6 +878,7 @@ async fn serve_path(
                 let request = crate::include::IncludeRequest {
                     path: request_path,
                     query,
+                    identity,
                 };
                 let resolved = crate::include::resolve_page(&content, resolver, &request)?;
                 // A resolver can produce more than a page may carry. Refuse
@@ -858,7 +907,7 @@ async fn serve_path(
                 has_live_regions,
                 ..PageFlags::default()
             },
-            session_directives: Vec::new(),
+            session_directives,
         };
         let (body, flags) = page.encode_body()?;
         send(
@@ -885,7 +934,7 @@ async fn serve_path(
 /// without submitting again.
 async fn serve_input(
     stream: &mut AtpServerStream,
-    site: SiteContext<'_>,
+    site: ConnectionContext<'_>,
     frame: RawFrame,
 ) -> Result<(), ProtocolError> {
     let Some(handler) = site.input_handler else {
@@ -903,16 +952,47 @@ async fn serve_input(
     let fields = crate::input::FormFields::parse(&input.form_data);
     tracing::debug!(path, fields = fields.len(), "INPUT");
 
+    let identity = resolve_identity(site.session_resolver, input.session.as_deref());
     let request = crate::input::InputRequest {
         path,
         query,
         fields: &fields,
+        identity: identity.as_deref(),
+        peer: site.peer,
     };
 
     match handler.handle(&request) {
-        crate::input::InputOutcome::Render { path, query } => {
+        crate::input::InputOutcome::Render {
+            path,
+            query,
+            session,
+        } => {
             tracing::info!(%path, "submission accepted");
-            serve_path(stream, site.root, site.resolver, &path, query.as_deref()).await
+            // Revoke here, not in the handler: a handler is told the identity
+            // and not the token, so it cannot name its own session to end it.
+            // Doing it here ends exactly the session that was presented.
+            if session.clears()
+                && let (Some(resolver), Some(token)) =
+                    (site.session_resolver, input.session.as_deref())
+            {
+                resolver.revoke(token);
+            }
+            // The identity that answered the request is the one the *response*
+            // is rendered for — except where the handler just changed it, in
+            // which case a fresh GET follows and resolves the new token. That
+            // is why the response after a login shows the logged-out nav for
+            // one page; the alternative is trusting a handler's word about who
+            // it just authenticated.
+            serve_path(
+                stream,
+                site.root,
+                site.resolver,
+                &path,
+                query.as_deref(),
+                identity.as_deref(),
+                session.into_directives(),
+            )
+            .await
         }
         crate::input::InputOutcome::Rejected(reason) => {
             // Logged at the same level as an acceptance. A submission refused
@@ -2207,6 +2287,20 @@ mod tests {
         }
     }
 
+    /// A HELLO that offers the `sessions` capability.
+    ///
+    /// Needed by any test whose frames carry a session: the transport gates
+    /// session-bearing frames on the negotiated capability, so a server cannot
+    /// send `Set-Session` to a client that never said it understood sessions.
+    /// A good property, and one a bare HELLO does not satisfy.
+    fn hello_frame_with_sessions() -> RawFrame {
+        RawFrame {
+            msg_type: MessageType::Hello,
+            flags: 0,
+            body: b"HELLO/0.2\nCapabilities: sessions\n".to_vec(),
+        }
+    }
+
     fn ping_frame() -> RawFrame {
         RawFrame {
             msg_type: MessageType::Ping,
@@ -2930,6 +3024,200 @@ mod tests {
         let body = String::from_utf8(response.body).unwrap();
         assert!(body.contains("400"), "{body}");
         assert!(body.contains("a title is required"), "{body}");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// The token is resolved once and only the identity travels on. This is the
+    /// property `crate::session` exists for, so it is asserted rather than
+    /// described: the include resolver is handed the username and has no way to
+    /// reach the token that produced it.
+    #[tokio::test]
+    async fn handlers_receive_an_identity_and_never_the_token() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static SAW_IDENTITY: AtomicBool = AtomicBool::new(false);
+
+        struct Sessions;
+        impl crate::session::SessionResolver for Sessions {
+            fn identity(&self, token: &str) -> Option<String> {
+                (token == "the-secret-token").then(|| "dusty".to_string())
+            }
+        }
+
+        struct Renders;
+        impl crate::include::IncludeResolver for Renders {
+            fn resolve(
+                &self,
+                _name: &str,
+                request: &crate::include::IncludeRequest<'_>,
+            ) -> Option<Vec<dustnet_core::scanner::Token>> {
+                assert_eq!(request.identity, Some("dusty"));
+                SAW_IDENTITY.store(true, Ordering::SeqCst);
+                Some(vec![dustnet_core::scanner::Token::Text(
+                    request.identity.unwrap_or("anonymous").to_string(),
+                )])
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("index.aml"),
+            r#"[page mode=document][include name="who" /][/page]"#,
+        )
+        .unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_include_resolver(Arc::new(Renders))
+        .with_session_resolver(Arc::new(Sessions));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame_with_sessions()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Get,
+                flags: 0,
+                body: b"GET /index.aml\nSession: the-secret-token\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(SAW_IDENTITY.load(Ordering::SeqCst), "resolver never ran");
+        assert!(body.contains("dusty"), "{body}");
+        assert!(
+            !body.contains("the-secret-token"),
+            "the token reached the page: {body}"
+        );
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// An unrecognised token is indistinguishable from none. Anything else is
+    /// an oracle for whether a token ever existed.
+    #[tokio::test]
+    async fn an_unrecognised_token_is_anonymous() {
+        struct NoSessions;
+        impl crate::session::SessionResolver for NoSessions {
+            fn identity(&self, _token: &str) -> Option<String> {
+                None
+            }
+        }
+
+        struct Renders;
+        impl crate::include::IncludeResolver for Renders {
+            fn resolve(
+                &self,
+                _name: &str,
+                request: &crate::include::IncludeRequest<'_>,
+            ) -> Option<Vec<dustnet_core::scanner::Token>> {
+                Some(vec![dustnet_core::scanner::Token::Text(
+                    request.identity.unwrap_or("anonymous").to_string(),
+                )])
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("index.aml"),
+            r#"[page mode=document][include name="who" /][/page]"#,
+        )
+        .unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_include_resolver(Arc::new(Renders))
+        .with_session_resolver(Arc::new(NoSessions));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame_with_sessions()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Get,
+                flags: 0,
+                body: b"GET /index.aml\nSession: bogus\n".to_vec(),
+            })
+            .await;
+
+        let body = String::from_utf8(client.receive().await.body).unwrap();
+        assert!(body.contains("anonymous"), "{body}");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// A handler granting a session gets its directive onto the wire, with the
+    /// session flag set so the client parses the metadata block.
+    #[tokio::test]
+    async fn an_accepted_submission_can_issue_a_session() {
+        struct Logs;
+        impl crate::input::InputHandler for Logs {
+            fn handle(
+                &self,
+                request: &crate::input::InputRequest<'_>,
+            ) -> crate::input::InputOutcome {
+                assert!(request.peer.is_loopback(), "peer should be loopback");
+                crate::input::InputOutcome::render("/index").with_session(
+                    crate::session::SessionChange::set("issued-token", "/", 1_900_000_000),
+                )
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), "[page][/page]").unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_input_handler(Arc::new(Logs));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame_with_sessions()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /login\nForm: name=dusty\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        assert_eq!(response.flags & 0x08, 0x08, "session flag should be set");
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.contains("Set-Session: issued-token"), "{body}");
 
         drop(client);
         shutdown.send(true).unwrap();

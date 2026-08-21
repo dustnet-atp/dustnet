@@ -41,15 +41,20 @@ const NAME_ATTR: &str = "name";
 
 /// What a resolver is told about the request being served.
 ///
-/// Deliberately thin. A resolver gets the path and query and nothing else — no
-/// peer address, no headers, no connection — so that adding one cannot widen
-/// what a page can learn about its reader.
+/// Deliberately thin. A resolver gets the path, the query and who is asking —
+/// no peer address, no headers, no connection, and **no session token** — so
+/// that generating a page cannot widen what a site learns about its reader, and
+/// cannot leak a bearer credential into the page it produces.
 #[derive(Debug, Clone, Copy)]
 pub struct IncludeRequest<'a> {
     /// The requested path, as it appeared in the GET.
     pub path: &'a str,
     /// The query string, without the leading `?`, if the request carried one.
     pub query: Option<&'a str>,
+    /// Who is asking, resolved from their session token, or `None` for
+    /// anonymous. A token that did not resolve is `None` too: a resolver must
+    /// not be able to tell "unknown token" from "no token".
+    pub identity: Option<&'a str>,
 }
 
 /// Produces content for named `[include]` placeholders.
@@ -174,6 +179,7 @@ mod tests {
         IncludeRequest {
             path: "/index.aml",
             query: None,
+            identity: None,
         }
     }
 

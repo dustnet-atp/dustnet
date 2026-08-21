@@ -916,6 +916,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "AML AST payload; aggregate bounded by MAX_ELEMENTS, MAX_DEPTH and the scanner payload limits, constructed fallibly under row transient.parser_result",
     ),
     (
+        "crates/dustnet-server/src/session.rs",
+        "SessionChange",
+        "at most one session directive a handler asks to apply, each bounded by MAX_TOKEN_LEN and MAX_SCOPE_LEN at serialization, and dropped when the response is written",
+    ),
+    (
         "crates/dustnet-server/src/input.rs",
         "FormFields",
         "decoded form submission; bounded by MAX_INPUT_MESSAGE_SIZE on the body and MAX_FIELDS on the parsed vector, and dropped when the request completes",

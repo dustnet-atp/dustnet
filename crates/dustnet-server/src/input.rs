@@ -153,6 +153,16 @@ pub struct InputRequest<'a> {
     pub query: Option<&'a str>,
     /// The submitted fields.
     pub fields: &'a FormFields,
+    /// Who submitted, resolved from their session token, or `None` for
+    /// anonymous. Never the token itself — see [`crate::session`].
+    pub identity: Option<&'a str>,
+    /// Where the submission came from.
+    ///
+    /// Given here and not to the include resolver, because this is what abuse
+    /// control needs and rendering does not: a login endpoint that cannot count
+    /// attempts per source cannot be defended against guessing, and a global
+    /// counter would let one attacker lock out everybody.
+    pub peer: std::net::IpAddr,
 }
 
 /// A handler's answer to a submission.
@@ -161,7 +171,15 @@ pub enum InputOutcome {
     /// Accepted. The server answers with this page, rendered exactly as a GET
     /// for it would be — same include resolution, same everything — so there is
     /// one path that produces a page whether or not a submission preceded it.
-    Render { path: String, query: Option<String> },
+    Render {
+        path: String,
+        query: Option<String>,
+        /// Session changes to apply to the response — issuing a token on a
+        /// successful login, clearing one on logout. Part of the return value
+        /// rather than a side effect, so a handler that grants a session says
+        /// so in the value it hands back.
+        session: crate::session::SessionChange,
+    },
     /// Refused, with a reason to show the person who submitted it.
     Rejected(String),
 }
@@ -172,6 +190,7 @@ impl InputOutcome {
         Self::Render {
             path: path.into(),
             query: None,
+            session: crate::session::SessionChange::none(),
         }
     }
 
@@ -180,6 +199,23 @@ impl InputOutcome {
         Self::Render {
             path: path.into(),
             query: Some(query.into()),
+            session: crate::session::SessionChange::none(),
+        }
+    }
+
+    /// Attach session changes to an acceptance.
+    ///
+    /// A no-op on a refusal: a refused login must not issue a session, and
+    /// making that unrepresentable is better than trusting every caller to
+    /// remember it.
+    pub fn with_session(self, change: crate::session::SessionChange) -> Self {
+        match self {
+            Self::Render { path, query, .. } => Self::Render {
+                path,
+                query,
+                session: change,
+            },
+            rejected @ Self::Rejected(_) => rejected,
         }
     }
 }
@@ -266,17 +302,36 @@ mod tests {
         assert_eq!(split_query("/index?"), ("/index", None));
     }
 
+    /// A refusal cannot be turned into a session. Attaching one to a rejection
+    /// is silently dropped rather than quietly granting a login that failed.
+    #[test]
+    fn a_refusal_cannot_carry_a_session() {
+        let outcome = InputOutcome::Rejected("nope".into())
+            .with_session(crate::session::SessionChange::set("t", "/", 1));
+        assert!(matches!(outcome, InputOutcome::Rejected(_)));
+    }
+
+    #[test]
+    fn a_session_attaches_to_an_acceptance() {
+        let outcome =
+            InputOutcome::render("/").with_session(crate::session::SessionChange::set("t", "/", 1));
+        match outcome {
+            InputOutcome::Render { session, .. } => assert!(!session.is_empty()),
+            other => panic!("expected Render, got {other:?}"),
+        }
+    }
+
     #[test]
     fn outcome_constructors_carry_the_query() {
         match InputOutcome::render("/index") {
-            InputOutcome::Render { path, query } => {
+            InputOutcome::Render { path, query, .. } => {
                 assert_eq!(path, "/index");
                 assert_eq!(query, None);
             }
             other => panic!("expected Render, got {other:?}"),
         }
         match InputOutcome::render_query("/index", "item=7") {
-            InputOutcome::Render { path, query } => {
+            InputOutcome::Render { path, query, .. } => {
                 assert_eq!(path, "/index");
                 assert_eq!(query.as_deref(), Some("item=7"));
             }
