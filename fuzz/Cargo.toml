@@ -64,3 +64,10 @@ path = "fuzz_targets/fuzz_viewer_state.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_serialize"
+path = "fuzz_targets/fuzz_serialize.rs"
+test = false
+doc = false
+bench = false

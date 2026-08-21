@@ -96,3 +96,71 @@ fn the_tracked_corpus_retains_its_expected_breadth() {
         files
     );
 }
+
+/// The serializer's round-trip property, exercised against every real document
+/// in the repository rather than only the hand-written cases in
+/// `serialize::tests`.
+///
+/// This is the broadest evidence available that generated AML can be composed
+/// safely: the corpus covers cross-page links, panel state machines, forms,
+/// live regions, WASM references and page transitions, so it reaches attribute
+/// and text shapes no hand-written fixture would think to include.
+///
+/// The two normalisations mirror `serialize::tests::normalize`, and each is a
+/// deliberate choice rather than a concession — see that function for why.
+#[test]
+fn every_tracked_aml_document_survives_a_serialize_round_trip() {
+    use dustnet_core::scanner::{AttributeValue, Token};
+
+    fn normalize(tokens: &[Token]) -> Vec<Token> {
+        let mut out: Vec<Token> = Vec::new();
+        for token in tokens {
+            match (out.last_mut(), token) {
+                (_, Token::Eof) => {}
+                (_, Token::Text(text)) if text.is_empty() => {}
+                (Some(Token::Text(previous)), Token::Text(text)) => previous.push_str(text),
+                _ => {
+                    let mut token = token.clone();
+                    if let Token::OpenTag { attributes, .. } = &mut token {
+                        for attribute in attributes {
+                            if let AttributeValue::Ident(value) = &attribute.value {
+                                attribute.value = AttributeValue::String(value.clone());
+                            }
+                        }
+                    }
+                    out.push(token);
+                }
+            }
+        }
+        out
+    }
+
+    fn scan(bytes: &[u8], what: &str) -> Vec<Token> {
+        dustnet_core::scanner::Scanner::new(bytes)
+            .unwrap_or_else(|error| panic!("{what} failed scanning: {error}"))
+            .scan_all()
+            .unwrap_or_else(|error| panic!("{what} failed scanning: {error}"))
+    }
+
+    let files = tracked_corpus();
+    assert!(
+        !files.is_empty(),
+        "the tracked AML corpus is empty; the fixture layout has moved"
+    );
+
+    for path in &files {
+        let display = path.display().to_string();
+        let bytes = std::fs::read(path)
+            .unwrap_or_else(|error| panic!("{display} is not readable: {error}"));
+
+        let tokens = normalize(&scan(&bytes, &display));
+        let emitted = dustnet_core::serialize::to_aml(&tokens)
+            .unwrap_or_else(|error| panic!("{display} failed serializing: {error}"));
+        let reparsed = normalize(&scan(emitted.as_bytes(), &display));
+
+        assert_eq!(
+            tokens, reparsed,
+            "{display} did not survive a serialize round trip"
+        );
+    }
+}

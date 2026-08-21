@@ -23,6 +23,7 @@ pub mod color;
 pub mod parser;
 pub mod protocol;
 pub mod scanner;
+pub mod serialize;
 pub mod session;
 
 pub use protocol::origin::{Origin, TransportSecurity};

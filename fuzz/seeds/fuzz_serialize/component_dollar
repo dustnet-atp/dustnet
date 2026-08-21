@@ -1,0 +1,1 @@
+[def name="b" attrs="c"][text fg=$c]$c[/text][/def][page mode=document][b c=red /][/page]
