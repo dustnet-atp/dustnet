@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0-alpha.2 - 2026-08-21
+
+### Changed
+
+- Relicensed to MIT alone, from `MIT OR Apache-2.0`. What is given up is
+  Apache-2.0's explicit patent grant; what is kept is GPLv2 compatibility and a
+  licence most readers already know. 0.2.0-alpha.1 was published under the dual
+  grant and is yanked rather than deleted: deleting a crate blocks republishing
+  the name for 24 hours, and the dual grant is the more permissive of the two,
+  so nothing that resolved against it loses a right.
+
 ## 0.2.0-alpha.1 - 2026-08-21
 
 ### Breaking

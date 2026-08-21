@@ -259,7 +259,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "dustnet"
-version = "0.2.0-alpha.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "clap",
  "clap_complete",
@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "dustnet-client"
-version = "0.2.0-alpha.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "arrayvec",
  "crossterm",
@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "dustnet-core"
-version = "0.2.0-alpha.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "idna",
  "serde_json",
@@ -306,7 +306,7 @@ dependencies = [
 
 [[package]]
 name = "dustnet-server"
-version = "0.2.0-alpha.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "dustnet-core",
  "notify",
@@ -321,7 +321,7 @@ dependencies = [
 
 [[package]]
 name = "dustnetd"
-version = "0.2.0-alpha.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "clap",
  "clap_complete",
