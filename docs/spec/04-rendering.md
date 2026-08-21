@@ -323,6 +323,16 @@ Authors express colors in AML in one of three forms:
   standard xterm 256-color palette.
 - **Truecolor** — `#rrggbb` hex, a 24-bit RGB value.
 
+**Black is literal.** `black` names palette slot 0, which terminal
+themes routinely set to something other than `#000000`. Because an
+absent color is already materialized as literal `#000000` (see *Cell
+resolution*), a client MUST present `black` as literal RGB `#000000`
+rather than as the palette reference, at every color-support tier. The
+two blacks have to agree: otherwise a region that says `bg=black`
+bands visibly against the region beside it that says nothing at all.
+`bright-black` is unaffected — it stays a palette reference, so themes
+keep control of their greys.
+
 ### Client color support tiers
 
 Every conforming client operates in exactly one of four color-

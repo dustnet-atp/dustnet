@@ -24,13 +24,14 @@ extern "C" {
 
 // ─── Color/style constants ──────────────────────────────────
 
-// Named color encoding: 0x020000NN
-const BLACK_BG: i32 = 0x0200_0000_u32 as i32;
-
 // Truecolor encoding: 0x01RRGGBB
 const fn rgb(r: u32, g: u32, b: u32) -> i32 {
     (0x0100_0000 | (r << 16) | (g << 8) | b) as i32
 }
+
+// Literal black rather than the terminal's configurable ANSI black, so light
+// and tinted palettes cannot show through the static.
+const BLACK_BG: i32 = rgb(0, 0, 0);
 
 const GREY_VERY_DIM: i32 = rgb(26, 29, 31);
 const GREY_DIM: i32 = rgb(52, 58, 61);

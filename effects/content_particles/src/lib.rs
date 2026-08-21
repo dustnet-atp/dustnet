@@ -19,8 +19,10 @@ extern "C" {
 #[cfg(not(feature = "prompt"))]
 const FRAMES: i32 = 48;
 const TRANSPARENT: i32 = 0;
+// Literal black (0x01RRGGBB), not the terminal's configurable ANSI black, so
+// light and tinted palettes cannot show through the stage.
 #[cfg(feature = "atomise")]
-const BLACK: i32 = 0x0200_0000;
+const BLACK: i32 = 0x0100_0000_u32 as i32;
 #[cfg(any(feature = "materialise", feature = "lifecycle"))]
 const DIM: i32 = 1 << 4;
 #[cfg(any(feature = "materialise", feature = "lifecycle"))]

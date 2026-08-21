@@ -63,9 +63,9 @@ fn render_transition_frame_into(
         ch: ' ',
         grapheme: None,
         style: CellStyle {
-            bg: Some(crate::color::ResolvedColor::Named(
-                crate::color::NamedColor::Black,
-            )),
+            // Literal black: SGR 40 is a theme-controlled palette slot, and
+            // the fade must land on the same black the presenter paints.
+            bg: Some(crate::color::ResolvedColor::Rgb(0, 0, 0)),
             ..Default::default()
         },
     };

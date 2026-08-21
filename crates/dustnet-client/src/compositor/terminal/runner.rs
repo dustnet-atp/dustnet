@@ -6362,9 +6362,9 @@ fn make_opaque(buf: &mut CellBuffer) {
         ch: ' ',
         grapheme: None,
         style: crate::compositor::layout::cell::CellStyle {
-            bg: Some(crate::color::ResolvedColor::Named(
-                crate::color::NamedColor::Black,
-            )),
+            // Literal black: SGR 40 is a theme-controlled palette slot, so
+            // naming it would tint the snapshot on themed terminals.
+            bg: Some(crate::color::ResolvedColor::Rgb(0, 0, 0)),
             ..Default::default()
         },
     };

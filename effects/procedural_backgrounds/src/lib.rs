@@ -12,7 +12,9 @@ extern "C" {
     fn random() -> i32;
 }
 
-const BLACK: i32 = 0x0200_0000_u32 as i32;
+// Literal black rather than the terminal's configurable ANSI black, so light
+// and tinted palettes cannot show through the background.
+const BLACK: i32 = rgb(0, 0, 0);
 const DIM: i32 = 1 << 4;
 const BOLD: i32 = 1;
 

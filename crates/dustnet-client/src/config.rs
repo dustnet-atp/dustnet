@@ -4,7 +4,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use crate::color::{Color, ColorSupport, NamedColor, ResolvedColor, parse_color};
+use crate::color::{Color, ColorSupport, ResolvedColor, parse_color};
 
 /// Client-side configuration.
 #[derive(Debug, Clone, Default)]
@@ -62,7 +62,7 @@ impl Default for StatusBarConfig {
                 g: 0x88,
                 b: 0x88,
             }),
-            bg: Some(Color::Named(NamedColor::Black)),
+            bg: Some(Color::Rgb { r: 0, g: 0, b: 0 }),
             reverse: false,
         }
     }

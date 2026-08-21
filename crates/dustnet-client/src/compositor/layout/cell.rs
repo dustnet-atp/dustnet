@@ -301,7 +301,10 @@ impl CellBuffer {
             ch: ' ',
             grapheme: None,
             style: CellStyle {
-                bg: Some(ResolvedColor::Named(crate::color::NamedColor::Black)),
+                // Literal black, not named: SGR 40 is a palette slot the
+                // host theme controls, and an opaque blank must be the same
+                // black the presenter paints for an absent color.
+                bg: Some(ResolvedColor::Rgb(0, 0, 0)),
                 ..Default::default()
             },
         };

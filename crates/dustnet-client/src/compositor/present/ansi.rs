@@ -1,4 +1,4 @@
-use crate::color::ResolvedColor;
+use crate::color::{NamedColor, ResolvedColor};
 use crate::compositor::layout::cell::CellStyle;
 use std::io::{self, Write};
 
@@ -8,6 +8,17 @@ use std::io::{self, Write};
 /// only while presenting the final frame so the host terminal's theme cannot
 /// bleed through the client canvas.
 pub const TERMINAL_DEFAULT_SGR: &str = "\x1b[38;2;255;255;255;48;2;0;0;0m";
+
+/// `black` is presented as literal RGB, never as SGR 30/40.
+///
+/// SGR 30/40 name palette slot 0, which almost no terminal theme sets to
+/// `#000000` — Solarized Dark puts `#073642` there, One Dark `#282c34`. An
+/// absent color is already materialized as literal black (see
+/// `TERMINAL_DEFAULT_SGR`), so honoring the palette for a *named* black would
+/// make a region that says `bg=black` band against the region beside it that
+/// says nothing at all. The two blacks must agree, and literal wins.
+const BLACK_FG_SGR: &str = "38;2;0;0;0";
+const BLACK_BG_SGR: &str = "48;2;0;0;0";
 
 /// Generate the SGR (Select Graphic Rendition) escape sequence for a cell style.
 ///
@@ -39,6 +50,9 @@ pub fn style_to_sgr(style: &CellStyle) -> String {
 
     match &style.fg {
         Some(fg) => match fg {
+            ResolvedColor::Named(NamedColor::Black) => {
+                params.push(BLACK_FG_SGR.into());
+            }
             ResolvedColor::Named(n) => {
                 params.push(n.fg_sgr().to_string());
             }
@@ -54,6 +68,9 @@ pub fn style_to_sgr(style: &CellStyle) -> String {
 
     match &style.bg {
         Some(bg) => match bg {
+            ResolvedColor::Named(NamedColor::Black) => {
+                params.push(BLACK_BG_SGR.into());
+            }
             ResolvedColor::Named(n) => {
                 params.push(n.bg_sgr().to_string());
             }
@@ -104,12 +121,14 @@ pub fn write_style_sgr(out: &mut impl Write, style: &CellStyle) -> io::Result<()
     }
 
     match &style.fg {
+        Some(ResolvedColor::Named(NamedColor::Black)) => parameter!("{BLACK_FG_SGR}"),
         Some(ResolvedColor::Named(color)) => parameter!("{}", color.fg_sgr()),
         Some(ResolvedColor::Palette(index)) => parameter!("38;5;{index}"),
         Some(ResolvedColor::Rgb(red, green, blue)) => parameter!("38;2;{red};{green};{blue}"),
         None => parameter!("38;2;255;255;255"),
     }
     match &style.bg {
+        Some(ResolvedColor::Named(NamedColor::Black)) => parameter!("{BLACK_BG_SGR}"),
         Some(ResolvedColor::Named(color)) => parameter!("{}", color.bg_sgr()),
         Some(ResolvedColor::Palette(index)) => parameter!("48;5;{index}"),
         Some(ResolvedColor::Rgb(red, green, blue)) => parameter!("48;2;{red};{green};{blue}"),
@@ -293,7 +312,60 @@ mod tests {
         assert!(sgr.contains("1")); // bold
         assert!(sgr.contains("4")); // underline
         assert!(sgr.contains("31")); // red fg
-        assert!(sgr.contains("40")); // black bg
+        assert!(sgr.contains("48;2;0;0;0")); // black bg, literal not palette
+        assert!(!sgr.contains(";40")); // never the theme-controlled slot 0
+    }
+
+    #[test]
+    fn named_black_bg_is_literal_rgb_not_palette_slot_zero() {
+        let style = CellStyle {
+            bg: Some(ResolvedColor::Named(NamedColor::Black)),
+            ..Default::default()
+        };
+        // Must be byte-identical to the absent-color default, so a cell that
+        // names black cannot band against a cell that leaves it unspecified.
+        assert_eq!(style_to_sgr(&style), TERMINAL_DEFAULT_SGR);
+    }
+
+    #[test]
+    fn named_black_fg_is_literal_rgb() {
+        let style = CellStyle {
+            fg: Some(ResolvedColor::Named(NamedColor::Black)),
+            ..Default::default()
+        };
+        assert_eq!(style_to_sgr(&style), "\x1b[38;2;0;0;0;48;2;0;0;0m");
+    }
+
+    #[test]
+    fn bright_black_still_uses_the_palette() {
+        // Only `black` is materialized; `bright-black` remains an honest
+        // palette reference so themes keep control of their greys.
+        let style = CellStyle {
+            fg: Some(ResolvedColor::Named(NamedColor::BrightBlack)),
+            bg: Some(ResolvedColor::Named(NamedColor::BrightBlack)),
+            ..Default::default()
+        };
+        assert_eq!(style_to_sgr(&style), "\x1b[90;100m");
+    }
+
+    #[test]
+    fn streaming_and_allocating_agree_on_black() {
+        for style in [
+            CellStyle {
+                bg: Some(ResolvedColor::Named(NamedColor::Black)),
+                ..Default::default()
+            },
+            CellStyle {
+                fg: Some(ResolvedColor::Named(NamedColor::Black)),
+                bg: Some(ResolvedColor::Named(NamedColor::Black)),
+                bold: true,
+                ..Default::default()
+            },
+        ] {
+            let mut direct = Vec::new();
+            write_style_sgr(&mut direct, &style).unwrap();
+            assert_eq!(direct, style_to_sgr(&style).as_bytes());
+        }
     }
 
     #[test]

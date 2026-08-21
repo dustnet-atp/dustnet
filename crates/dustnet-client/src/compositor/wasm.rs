@@ -1188,6 +1188,67 @@ mod tests {
         ignore = "runs the WASM interpreter; Miri interpreting an interpreter is impractical"
     )]
     #[test]
+    fn background_effects_never_name_the_terminal_black() {
+        // SGR 40 is a palette slot the host theme controls -- Solarized Dark
+        // puts #073642 there. An effect that names black instead of encoding
+        // literal RGB paints a tinted stage that bands against the compositor's
+        // own literal-black fill, so no background effect may emit one.
+        let standalone = ["matrix_rain", "static_noise"];
+        let variants = [
+            "starfield",
+            "plasma",
+            "lava",
+            "aurora",
+            "vortex",
+            "caustics",
+            "orbitals",
+            "kaleidoscope",
+        ];
+
+        for (name, loaded) in standalone.iter().map(|n| (*n, load_effect_wasm(n))).chain(
+            variants
+                .iter()
+                .map(|n| (*n, load_effect_variant_wasm("procedural_backgrounds", n))),
+        ) {
+            let Some(wasm_bytes) = loaded else {
+                eprintln!("skipping {name}: run `make effects` to build it");
+                continue;
+            };
+
+            let rt = WasmRuntime::new();
+            let module = rt
+                .compile(&wasm_bytes)
+                .unwrap_or_else(|e| panic!("{name} failed to compile: {e}"));
+            let mut inst = rt
+                .instantiate(&module, 40, 12, None)
+                .unwrap_or_else(|e| panic!("{name} failed to instantiate: {e}"));
+            assert_eq!(inst.init(40, 12).expect("init"), 0);
+
+            for frame in 0..9 {
+                inst.tick(frame)
+                    .unwrap_or_else(|e| panic!("{name} trapped on frame {frame}: {e}"));
+                for y in 0..12 {
+                    for x in 0..40 {
+                        let Some(cell) = inst.buffer().get(x, y) else {
+                            continue;
+                        };
+                        assert_ne!(
+                            cell.style.bg,
+                            Some(ResolvedColor::Named(NamedColor::Black)),
+                            "{name} named the terminal's ANSI black at ({x}, {y}) \
+                             on frame {frame}; encode literal RGB(0, 0, 0) instead"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "runs the WASM interpreter; Miri interpreting an interpreter is impractical"
+    )]
+    #[test]
     fn matrix_rain_wasm_has_green_styled_cells() {
         let wasm_bytes = match load_effect_wasm("matrix_rain") {
             Some(b) => b,
