@@ -8,19 +8,16 @@ The premise: what if the web had been built for terminals?
 
 ## Connecting to a site
 
-There is a live site at `dustnet.io`. Every route below ends at the same
-command, so the choice is only about how much you want installed.
+`dustnet.io` is live. Any route below gets you there.
 
 ### From crates.io
-
-`0.2.0-alpha.1` is a pre-release, so its version has to be named. Cargo does
-not select pre-release versions for a bare requirement, which is why a plain
-`cargo install dustnet` reports that it cannot find the crate.
 
 ```console
 cargo install dustnet --version 0.2.0-alpha.1 --locked
 dustnet connect atp://dustnet.io
 ```
+
+The version is required — Cargo skips pre-releases for a bare requirement.
 
 ### From source
 
@@ -30,10 +27,9 @@ cd dustnet
 cargo run --release --locked -p dustnet -- connect atp://dustnet.io
 ```
 
-### With Docker
+### Docker
 
-Build once. The result carries the client and nothing else — the Rust
-toolchain stays behind in the discarded build stage.
+Build once:
 
 ```console
 docker build -t dustnet - <<'EOF'
@@ -47,7 +43,7 @@ EOF
 mkdir -p ~/.config/dustnet
 ```
 
-Then, for each run:
+Then per run:
 
 ```console
 docker run --rm -it \
@@ -62,19 +58,11 @@ docker run --rm -it \
   dustnet connect atp://dustnet.io
 ```
 
-The container is disposable but `~/.config/dustnet` is not, and that split is
-deliberate. Pinning earns its value by remembering: a client that forgets every
-time treats every visit as a first visit, and a fingerprint prompt that appears
-on every run is one nobody reads. The flags above drop every capability, keep
-the root filesystem read-only, and run as you rather than as root, because the
-client parses wire data and runs remote WASM from hosts it does not control.
+`~/.config/dustnet` is mounted so certificate pins survive between runs.
 
-### With Docker, without building anything
+### Docker, without building an image
 
-One command, no image and no Dockerfile. The first run compiles and takes a
-couple of minutes; every run after it starts in well under a second, because
-the built binary stays in a volume and the guard skips straight past
-`cargo install`.
+First run compiles; later runs start in under a second.
 
 ```console
 docker run --rm -it \
@@ -86,20 +74,15 @@ docker run --rm -it \
   sh -c '[ -x /opt/dustnet/bin/dustnet ] || cargo install dustnet --version 0.2.0-alpha.1 --locked --root /opt/dustnet; exec /opt/dustnet/bin/dustnet connect atp://dustnet.io'
 ```
 
-This is the least contained of the four. It runs as root inside the container
-and keeps a full Rust toolchain in the image it runs from, so it suits a first
-look rather than regular use — the route above costs one build and gives up
-neither. On Linux the trust-store file it writes will belong to root on the
-host. `docker volume rm dustnet-bin dustnet-cargo` discards everything it
-cached.
+Runs as root, from an image carrying a Rust toolchain. Reset with
+`docker volume rm dustnet-bin dustnet-cargo`.
 
 ## Everything else
 
-[docs/README.md](docs/README.md) maps the documentation and says which parts are
-normative. [docs/guides/cli.md](docs/guides/cli.md) is the full command
-reference, and
+[docs/README.md](docs/README.md) maps the documentation.
+[docs/guides/cli.md](docs/guides/cli.md) is the command reference.
 [docs/guides/production-support.md](docs/guides/production-support.md) states
-what is supported and what is not. [CONTRIBUTING.md](CONTRIBUTING.md) covers
-building and testing.
+what is supported. [CONTRIBUTING.md](CONTRIBUTING.md) covers building and
+testing.
 
 Licensed under either MIT or Apache-2.0, at your option.

@@ -1,5 +1,8 @@
 # Production Support Matrix
 
+ATP/AML 1.0 is not frozen. Nothing below is a stable-release guarantee for
+protocol compatibility or security posture.
+
 | Component | 0.2 status | Stable target |
 |---|---|---|
 | ATP/AML scanner, parser, URI and origin | Preview | Supported |
