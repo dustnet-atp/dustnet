@@ -26,6 +26,26 @@ new_key_type! {
 /// module can mutate — this enforces Invariant 2a from
 /// `compositor.md` compiler-side: external writes route through
 /// `PatchApplier` or the kind-gated `*_buffer_mut` accessors.
+/// Cached result of a `Dimension::Fit` box's measure pass, valid only within
+/// the layout pass that produced it.
+///
+/// `layout_box_node` measures a `Fit` box's children into a throwaway buffer to
+/// learn its height, then lays those same children out again for real. Without
+/// this memo that is two full subtree walks per level — `T(d) = 2·T(d-1)`, the
+/// exponential blowup recorded as defect 1 in `verification/BUGS.md`.
+///
+/// `pass` is what makes reuse safe. Layout never mutates content, so a memo is
+/// good for the rest of the pass that wrote it; anything that *does* change
+/// content (a patch, a rebuild) is followed by a new pass with a new number, so
+/// a stale memo can never be read. Keying on `width` as well means a box laid
+/// out at a second width re-measures rather than reusing a mismatched height.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct MeasureMemo {
+    pub(super) pass: u64,
+    pub(super) width: u16,
+    pub(super) height: u16,
+}
+
 #[derive(Debug)]
 pub struct Node {
     pub(super) id: NodeId,
@@ -63,6 +83,13 @@ pub struct Node {
     /// The `id=` attribute from AML, if present. Stable across navigation
     /// within a single scene; replaced when the scene is rebuilt.
     pub(super) aml_id: Option<String>,
+
+    /// Memoised height from this node's `Fit` measure pass. Written and read
+    /// only through `Scene::cached_measure` / `Scene::set_cached_measure`, so
+    /// the pass-generation check cannot be bypassed. `None` until the node is
+    /// first measured; a plain field rather than a side table, so it adds no
+    /// collection to the layout path.
+    pub(super) measured: Option<MeasureMemo>,
 }
 
 impl Node {
@@ -756,6 +783,7 @@ impl NodeBuilder {
             focusable: self.focusable,
             hit_target: self.hit_target,
             aml_id: self.aml_id,
+            measured: None,
         }
     }
 }

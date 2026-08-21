@@ -361,6 +361,9 @@ fn layout_subtree_inner(
     {
         LAYOUT_CALLS.with(|c| c.set(c.get() + 1));
     }
+
+    // Retire the previous pass's measure memos. See `Scene::begin_layout_pass`.
+    scene.begin_layout_pass();
     let mut buf = governor.map_or_else(
         || fallible_layout_buffer(width, height),
         |governor| fallible_layout_buffer_governed(width, height, governor),
@@ -461,6 +464,9 @@ pub(crate) fn relayout_in_place(
         LAYOUT_CALLS.with(|c| c.set(c.get() + 1));
     }
 
+    // Retire the previous pass's measure memos. See `Scene::begin_layout_pass`.
+    scene.begin_layout_pass();
+
     let rect = match scene.get(node_id).map(|n| n.placement().rect) {
         Some(r) if !r.is_empty() => r,
         _ => return true,
@@ -548,6 +554,9 @@ fn layout_scene_inner(
     {
         LAYOUT_CALLS.with(|c| c.set(c.get() + 1));
     }
+
+    // Retire the previous pass's measure memos. See `Scene::begin_layout_pass`.
+    scene.begin_layout_pass();
 
     let (buf_width, buf_height) = match scene.page_mode {
         PageMode::Screen { cols, rows } => {
@@ -800,16 +809,35 @@ pub(crate) fn layout_box_node(
     let padding_overhead = padding * 2;
     let inner_w = box_w.saturating_sub(border_overhead + padding_overhead);
 
+    // A `Fit` box learns its height by laying its children out into a
+    // throwaway buffer, then lays those same children out again for real.
+    // Measuring every time makes that two subtree walks per level —
+    // `T(d) = 2·T(d-1)`, the exponential blowup in `verification/BUGS.md` #1.
+    //
+    // The memo collapses it because the *same* node is measured twice per
+    // level: once inside its parent's measure pass, once inside the parent's
+    // real pass, both at the same `inner_w`. The second is a hit.
+    //
+    // Skipping a measure skips only throwaway work. The measure pass does
+    // write placements and buffers into the scene, but `layout_children_scene`
+    // below overwrites them for real immediately after — which is why the
+    // measure buffer could be discarded in the first place.
     let content_height = if h == Dimension::Fit {
-        measure_children_height_scene(
-            inner_w,
-            ctx.color_support,
-            ctx.wcfg,
-            &box_style,
-            scene,
-            &children,
-            ctx.governor.clone(),
-        )
+        if let Some(cached) = scene.cached_measure(node_id, inner_w) {
+            cached
+        } else {
+            let measured = measure_children_height_scene(
+                inner_w,
+                ctx.color_support,
+                ctx.wcfg,
+                &box_style,
+                scene,
+                &children,
+                ctx.governor.clone(),
+            );
+            scene.set_cached_measure(node_id, inner_w, measured);
+            measured
+        }
     } else {
         0
     };
@@ -3278,6 +3306,106 @@ mod tests {
             r1.contains("clients:"),
             "Row 1 should contain clients, got: '{}'",
             r1
+        );
+    }
+
+    /// Cited from `verification/threat-model.json` as evidence for **Malicious
+    /// AML → bounded resource use**, alongside `rejects_deep_nesting` rather
+    /// than replacing it: the two prove different halves of that claim.
+    ///
+    /// `rejects_deep_nesting` proves depth *greater than* `MAX_DEPTH` is
+    /// refused. It says nothing about depth 32, which is *accepted* — and which
+    /// cost roughly twenty minutes before the exponential measure pass recorded
+    /// as `verification/BUGS.md` #1 was fixed. This covers that half.
+    ///
+    /// The bound is wall-clock, which is normally a poor thing to assert. It
+    /// works here because it is not measuring performance: the defect it guards
+    /// against is a return to `O(2^d)`, which at this depth overshoots by five
+    /// orders of magnitude. Real cost is ~15 ms unoptimised, so the 5 s bound
+    /// has ~300x headroom for a loaded machine while still catching the only
+    /// regression it is here to catch.
+    #[test]
+    fn layout_at_max_depth_completes_within_time_bound() {
+        // 31 nested boxes is the deepest *conforming* document: the parser
+        // rejects beyond `MAX_DEPTH` (32) and `[page]` occupies one level.
+        let src = format!(
+            "[page mode=document]\n{}hi\n[/page]\n",
+            "[box border=rounded]\n".repeat(31)
+        );
+        let started = std::time::Instant::now();
+        let _ = parse_and_layout(&src, 80, 24);
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "layout at MAX_DEPTH took {elapsed:?}; measure-pass memoisation has \
+             probably regressed to a full subtree walk per level"
+        );
+    }
+
+    /// The memo is keyed on the layout pass, so content that changes between
+    /// passes must re-measure. Without the pass key a `Fit` box would keep the
+    /// height it had before the patch — stale geometry, which is a worse defect
+    /// than the slowness the memo removes.
+    #[test]
+    fn fit_box_remeasures_after_content_changes_between_passes() {
+        use crate::compositor::scene::node::{NodeKind, TextContent, TextRun};
+        use crate::compositor::scene::patch::{NodeTemplate, Patch, PatchApplier};
+
+        let src = "[page mode=document]\n[box]\n[text]one[/text]\n[/box]\n[/page]\n";
+        let mut scanner = Scanner::new(src.as_bytes()).unwrap();
+        let tokens = scanner.scan_all().unwrap();
+        let doc = parser::parse(tokens).document.expect("parse failed");
+        let mut scene = crate::compositor::scene::build::from_document(&doc);
+
+        let layout_once = |scene: &mut crate::compositor::scene::Scene| {
+            layout_scene(
+                scene,
+                40,
+                24,
+                ColorSupport::Truecolor,
+                WidthConfig::default(),
+            );
+        };
+
+        layout_once(&mut scene);
+        let box_id = scene
+            .get(scene.root())
+            .unwrap()
+            .children()
+            .iter()
+            .copied()
+            .find(|id| matches!(scene.get(*id).map(|n| n.kind()), Some(NodeKind::Flow(_))))
+            .expect("no box node");
+        let height_before = scene.get(box_id).unwrap().placement().rect.h;
+
+        // Add a second line of content inside the box.
+        PatchApplier::apply(
+            &mut scene,
+            Patch::InsertNode {
+                parent: box_id,
+                before: None,
+                node: NodeTemplate {
+                    kind: NodeKind::Text(TextContent {
+                        runs: vec![TextRun {
+                            text: "two".into(),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                    aml_id: Some("added".into()),
+                    focusable: false,
+                    hit_target: None,
+                },
+            },
+        );
+
+        layout_once(&mut scene);
+        let height_after = scene.get(box_id).unwrap().placement().rect.h;
+
+        assert!(
+            height_after > height_before,
+            "Fit box stayed {height_before} rows after gaining a line \
+             (now {height_after}); a measure memo survived across layout passes"
         );
     }
 }

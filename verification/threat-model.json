@@ -63,6 +63,11 @@
         {
           "property": "bounded resource use",
           "control": "Resource Exhaustion",
+          "evidence": "layout_at_max_depth_completes_within_time_bound"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Resource Exhaustion",
           "evidence": "ci-fuzz-smoke"
         }
       ]

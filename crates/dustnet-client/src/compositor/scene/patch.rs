@@ -229,6 +229,7 @@ fn apply_insert(scene: &mut Scene, parent: NodeId, before: Option<NodeId>, tpl: 
         focusable: tpl.focusable,
         hit_target: tpl.hit_target,
         aml_id: tpl.aml_id,
+        measured: None,
     }) else {
         scene.resource_error = true;
         return;

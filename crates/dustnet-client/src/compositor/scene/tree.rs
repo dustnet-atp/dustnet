@@ -345,6 +345,10 @@ pub struct Scene {
     /// node child list. The disposable builder admits a conservative peak,
     /// then reconciles this lease to allocator-selected Vec capacities.
     pub(super) _node_relation_topology_lease: Option<BudgetLease>,
+    /// Monotonic layout-pass counter, bumped by `begin_layout_pass`. Stamped
+    /// into each node's `MeasureMemo` so memos from an earlier pass are never
+    /// read. `u64` so wrapping is unreachable rather than merely unlikely.
+    pub(super) layout_pass: u64,
 }
 
 #[derive(Debug)]
@@ -927,6 +931,49 @@ impl Scene {
         match &node.kind {
             NodeKind::Overlay(_) => node.buffer.as_mut(),
             _ => None,
+        }
+    }
+
+    /// Open a new layout pass, retiring every measure memo from the previous
+    /// one.
+    ///
+    /// **Every** layout traversal entry point must call this, not just
+    /// full-page layout — `layout_scene_inner`, `layout_subtree_inner` and
+    /// `relayout_in_place` all do. Within a pass a memo stays valid because
+    /// layout writes placements and buffers but never content; across passes it
+    /// may not, and `relayout_in_place` is the pointed case, since the
+    /// invalidation drain calls it precisely *because* a patch changed content.
+    /// A memo that survived into it would report a stale height, which is a
+    /// worse defect than the slowness memoisation removes.
+    ///
+    /// Bumping a counter rather than walking the arena keeps this O(1) and
+    /// leaves memos for nodes the new pass never reaches simply unread. The
+    /// drain calls this once per invalidated node, so memos do not carry
+    /// between siblings in one drain — correct, and cheap enough not to matter
+    /// at the depths involved.
+    pub(crate) fn begin_layout_pass(&mut self) {
+        self.layout_pass = self.layout_pass.wrapping_add(1);
+    }
+
+    /// The memoised measured height for `id` at `width`, if one was recorded
+    /// during the current pass. A miss — different pass, different width, or
+    /// never measured — returns `None` and the caller measures for real, so a
+    /// miss costs time and never correctness.
+    pub(crate) fn cached_measure(&self, id: NodeId, width: u16) -> Option<u16> {
+        let memo = self.nodes.get(id)?.measured?;
+        (memo.pass == self.layout_pass && memo.width == width).then_some(memo.height)
+    }
+
+    /// Record `height` as the measured height of `id` at `width` for the
+    /// current pass.
+    pub(crate) fn set_cached_measure(&mut self, id: NodeId, width: u16, height: u16) {
+        let pass = self.layout_pass;
+        if let Some(node) = self.nodes.get_mut(id) {
+            node.measured = Some(super::node::MeasureMemo {
+                pass,
+                width,
+                height,
+            });
         }
     }
 

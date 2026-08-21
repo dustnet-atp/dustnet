@@ -260,6 +260,7 @@ fn from_document_with_governor(doc: &Document, governor: Option<ResourceGovernor
         page_transition_overlay: None,
         _node_topology_lease: node_lease,
         _node_relation_topology_lease: relation_lease,
+        layout_pass: 0,
     }
 }
 
