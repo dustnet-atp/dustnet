@@ -4,7 +4,7 @@ members = [
     "crates/dustnet-core",
     "crates/dustnet-client",
     "crates/dustnet-server",
-    "crates/dustnet-cli",
+    "crates/dustnet",
     "crates/dustnetd",
 ]
 exclude = [

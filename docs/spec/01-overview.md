@@ -61,7 +61,7 @@ The repository is a virtual Cargo workspace with five production packages:
 | `dustnet-core` | ATP/AML values, codecs, parsing, origin rules, and protocol state machines |
 | `dustnet-client` | Client transport, sessions, viewer state, compositor, and WASM host |
 | `dustnet-server` | Plugin-free `StaticServer` and `StaticServerConfig` |
-| `dustnet` (`crates/dustnet-cli`) | Client, local rendering, and authoring CLI |
+| `dustnet` (`crates/dustnet`) | Client, local rendering, and authoring CLI |
 | `dustnetd` | Static-server CLI |
 
 There is no root facade or compatibility crate. The production server API has

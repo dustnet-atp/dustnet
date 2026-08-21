@@ -386,7 +386,7 @@ const TRANSIENT_SITES: &[(&str, &str, &str, &str)] = &[
 /// silently rot into a blanket waiver.
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
-        "crates/dustnet-cli/src/main.rs",
+        "crates/dustnet/src/main.rs",
         "ConnectOpts",
         "local CLI arguments; not remotely influenced",
     ),

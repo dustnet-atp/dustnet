@@ -1088,7 +1088,7 @@ Workspace ownership around the compositor:
 crates/dustnet-core/src/       ATP/AML values, codecs, scanner, parser, protocol state
 crates/dustnet-client/src/     client transport, sessions, viewer, compositor, config
 crates/dustnet-server/src/     StaticServer and server transport
-crates/dustnet-cli/src/        dustnet browser/authoring CLI
+crates/dustnet/src/            dustnet browser/authoring CLI
 crates/dustnetd/src/           dustnetd static-server CLI
 ```
 
