@@ -185,11 +185,25 @@ install-check: build-release
 # No `--allow-dirty`, deliberately: a release is cut from a clean tree, so the
 # check runs under the same condition the release does.
 #
+# Its own target directory rather than the shared `target/`: verification
+# builds each package with its path dependencies rewritten as registry
+# dependencies, and Cargo treats a registry source as immutable. A
+# `dustnet_core` rlib left in the dev cache by an earlier build of the same
+# version therefore matches by fingerprint and is reused, so a freshly
+# packaged `dustnet-server` compiles against a stale core. That is not
+# hypothetical: it presented as eleven E0408/E0599 errors about
+# `MessageType::Ping` and `UpdateMessage::validate_update_parts`, items the
+# tarball demonstrably contained. Nothing in the output named a cache -- the
+# only clue was a missing `Compiling dustnet-core` line under `Verifying
+# dustnet-server`. A pre-release gate that can fail for a reason outside the
+# tree it is checking is worse than no gate.
+#
 # Not part of `ci`: it packages and rebuilds five crates. Run it before a
 # release, and whenever package metadata changes.
 ci-publish-dryrun:
 	@echo "── publish dry run ──"
-	$(MISE) cargo publish --dry-run --locked --workspace
+	$(MISE) CARGO_TARGET_DIR=target/publish-verify \
+		cargo publish --dry-run --locked --workspace
 	@echo "── publish dry run: all five package cleanly ──"
 
 ci-docs:
