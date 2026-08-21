@@ -3223,4 +3223,67 @@ mod tests {
         shutdown.send(true).unwrap();
         task.await.unwrap().unwrap();
     }
+
+    /// A resolver can produce more than a page may carry. The server refuses
+    /// rather than truncating: half a page is a worse answer than an error
+    /// naming the cause, and a silently truncated page is malformed AML.
+    #[tokio::test]
+    async fn an_oversized_resolved_page_is_refused_not_truncated() {
+        struct Floods;
+        impl crate::include::IncludeResolver for Floods {
+            fn resolve(
+                &self,
+                _name: &str,
+                _request: &crate::include::IncludeRequest<'_>,
+            ) -> Option<Vec<dustnet_core::scanner::Token>> {
+                // Comfortably past MAX_PAGE_MESSAGE_SIZE once serialized.
+                Some(vec![dustnet_core::scanner::Token::Text(
+                    "x".repeat(MAX_PAGE_MESSAGE_SIZE + 1024),
+                )])
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("index.aml"),
+            r#"[page mode=document][include name="flood" /][/page]"#,
+        )
+        .unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_include_resolver(Arc::new(Floods));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Get,
+                flags: 0,
+                body: b"GET /index.aml\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Error);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.contains("500"), "{body}");
+        assert!(
+            body.len() <= dustnet_core::protocol::MAX_CONTROL_MESSAGE_SIZE,
+            "the refusal itself must stay bounded"
+        );
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
 }

@@ -9,8 +9,18 @@ protocol compatibility or security posture.
 | Terminal client and compositor | Preview (macOS verified) | macOS supported |
 | Interpreted draw-only WASM host | Preview | Supported within budgets |
 | Static `dustnetd` server | Preview | Supported |
-| Accounts, email, boards, chat and links | Example only | Unsupported |
+| `dustnet-server` include, input and session hooks | Preview | Supported within their stated guarantees |
+| Accounts, email, boards, chat and links | Site's own | Unsupported |
 | Dynamic/operator-installed plugins | Out of scope | Unsupported |
+
+The middle two rows are the ones to read carefully. `dustnet-server` provides
+hooks a site server installs — include resolution, form submission, session
+resolution — and what those hooks guarantee is supported and tested:
+escaped generation, bounded submissions, and session tokens that never reach a
+handler. What a site *builds* on them is not. Accounts, password storage, rate
+limiting and email are the site's own code, unsupported here, and
+`dustnet-sites/dustnews` is a worked example rather than a shipped feature.
+`dustnetd` installs no hooks and is unchanged by any of it.
 
 ## File descriptor limits
 

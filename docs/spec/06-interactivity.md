@@ -1,10 +1,16 @@
 # Interactivity
 
 > Production-boundary note: panels, forms as client-side markup, and static
-> file-backed live regions are supported. Authentication workflows, accounts,
-> SMTP and dynamic poll handlers are unsupported examples under
-> `examples/unsupported-social`, which is also where the prototype's plugin and
-> template-marker mechanism is documented; `dustnetd` loads none of it.
+> file-backed live regions are supported. `dustnet-server` additionally provides
+> optional hooks a server may install — include resolution, form submission and
+> session resolution — and `dustnetd` installs none of them, so it authenticates
+> nobody, generates nothing, and refuses `INPUT` with 405.
+>
+> Accounts, password storage, SMTP and dynamic poll handlers are *not* provided:
+> those are a site's own, built on the hooks. The prototype under
+> `examples/unsupported-social` remains unsupported and is not the way to build
+> them — its plugin dispatch and `{{marker}}` substitution are superseded by
+> `[include]` and `dustnet_core::serialize`.
 
 ## Design Constraint
 
@@ -195,9 +201,14 @@ cells are revealed top-to-bottom and left-to-right; completion can trigger a
 ### Server-Side Generation
 
 Event bindings are plain AML, so any ATP implementation can generate them
-alongside other content without adding executable logic to the client. The
-production `StaticServer` serves authored AML verbatim. The following example
-comes from the unsupported social/plugin prototype:
+alongside other content without adding executable logic to the client.
+`dustnetd` serves authored AML verbatim, having no resolver installed.
+
+A server that does generate them should compose tokens and let
+`dustnet_core::serialize::to_aml` write the characters, for the reason
+`docs/spec/07-security.md` gives under AML Injection. The example below does the
+opposite — it comes from the unsupported prototype, and is shown as the shape to
+recognise rather than the shape to copy:
 
 ```rust
 // In a plugin's render method
@@ -266,15 +277,29 @@ Users can navigate to arbitrary URIs via the command line. Pressing `:` opens a 
 
 The command line maintains a history of previously entered commands, navigable with Up/Down arrow keys.
 
-## Protocol Authentication (Not Provided by `StaticServer`)
+## Protocol Authentication (Not Provided by `dustnetd`)
 
 ATP defines session directives and the reference client implements their
-path-scoped storage and attachment rules. The production `StaticServer` does
-not authenticate users, issue or validate sessions, or implement account
-routes; it rejects `INPUT` with status 405. The workflows below describe how a
-separate dynamic ATP server could use the protocol and how the quarantined
-`examples/unsupported-social` prototype did so. They are not `dustnetd`
-features.
+path-scoped storage and attachment rules.
+
+`dustnetd` does not authenticate users, issue or validate sessions, or implement
+account routes; it rejects `INPUT` with status 405, and
+`without_a_handler_input_is_still_refused` holds it to that.
+
+The `dustnet-server` library it is built from does provide the pieces a server
+needs to do those things: an input handler for form submissions and a session
+resolver that turns a presented token into an identity. Neither is installed
+unless a server asks for it, and what a server does with them — accounts,
+password storage, rate limiting, email — is entirely that server's, because none
+of it is something a generic ATP server can decide. `docs/spec/07-security.md`
+states the boundary the library does enforce: a handler is given the identity and
+never the token.
+
+The workflows below describe how such a server uses the protocol. They are not
+`dustnetd` features, and they are not the quarantined
+`examples/unsupported-social` prototype either — that remains unsupported, and
+its string-concatenation approach to generating AML is the thing
+`dustnet_core::serialize` exists to replace.
 
 Authentication uses the standard form submission mechanism — there is no special login element or handshake. A site serves a login page with input fields, the user submits credentials via a normal form, and the server responds with a session token if credentials are valid.
 
@@ -491,7 +516,13 @@ static `[pre]...[/pre]` AML into `target/sites`, and omits fonts, hidden state
 and raw markers from the served tree. The `site` Make target validates every
 emitted AML page; the server targets serve only that generated directory.
 
-An unsupported prototype server also used runtime `{{name}}` markers for
+An unsupported prototype server also used runtime `{{name}}` text markers for
 dynamic content. That mechanism is not part of the production boundary and is
 described in
 [`examples/unsupported-social/README.md`](../../examples/unsupported-social/README.md).
+
+The supported equivalent is the `[include name=... /]` element in
+[03-markup.md](03-markup.md): a placeholder the parser validates, which a server
+with an include resolver installed replaces before the page goes on the wire. A
+marker nothing expands is a diagnostic; a text marker nothing expanded was served
+to readers as literal text, which is the difference that motivated the change.

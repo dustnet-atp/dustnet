@@ -1,5 +1,5 @@
 {
-  "description": "Threat model for the Dustnet client. Authoritative source for the adversaries assumed hostile and for the control and evidence answering each. Read by tools/allocation-audit: an adversary with no coverage row, a row naming an undeclared property, or a row whose evidence is neither a test function nor a make target fails the build. docs/spec/07-security.md describes the controls in prose.",
+  "description": "Threat model for Dustnet. Authoritative source for the adversaries assumed hostile and for the control and evidence answering each. Read by tools/allocation-audit: an adversary with no coverage row, a row naming an undeclared property, or a row whose evidence is neither a test function nor a make target fails the build. docs/spec/07-security.md describes the controls in prose. Adversaries are grouped by which side faces them: the first group is the client, which trusts nothing a server sends; the second is a server built on dustnet-server that has installed hooks, which trusts nothing a visitor sends. dustnetd installs no hooks, so the second group's adversaries cannot reach it at all -- the without_a_* tests hold it to that -- but they are listed here because the library's guarantees to a hooked server are part of the supported boundary and would otherwise be claimed only in prose.",
   "trusted": [
     "operating system",
     "terminal emulator"
@@ -12,7 +12,9 @@
     "origin isolation",
     "terminal integrity",
     "bounded resource use",
-    "local confidentiality"
+    "local confidentiality",
+    "content integrity",
+    "credential containment"
   ],
   "adversaries": [
     {
@@ -185,6 +187,94 @@
           "property": "local confidentiality",
           "control": "Information Leakage",
           "evidence": "directives_reject_non_absolute_or_traversing_scopes"
+        }
+      ]
+    },
+    {
+      "name": "Form submitter",
+      "description": "anyone who can reach the port. Chooses every byte of an INPUT, need not be logged in, and need not have used a form at all -- a maxlen is a hint to a cooperating client, not a constraint on a hand-made submission.",
+      "coverage": [
+        {
+          "property": "content integrity",
+          "control": "AML Injection",
+          "evidence": "text_that_looks_like_markup_survives_as_text"
+        },
+        {
+          "property": "content integrity",
+          "control": "AML Injection",
+          "evidence": "generated_user_text_cannot_become_markup"
+        },
+        {
+          "property": "content integrity",
+          "control": "AML Injection",
+          "evidence": "generated_attribute_values_cannot_close_their_quote"
+        },
+        {
+          "property": "content integrity",
+          "control": "AML Injection",
+          "evidence": "ci-fuzz-smoke"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Input Validation",
+          "evidence": "field_count_is_bounded"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Input Validation",
+          "evidence": "without_a_handler_input_is_still_refused"
+        }
+      ]
+    },
+    {
+      "name": "Session holder",
+      "description": "presents a session token that may be stolen, expired, revoked, guessed or absent, and wants either to be someone else or to learn whether a token ever existed.",
+      "coverage": [
+        {
+          "property": "credential containment",
+          "control": "Session Security",
+          "evidence": "handlers_receive_an_identity_and_never_the_token"
+        },
+        {
+          "property": "credential containment",
+          "control": "Session Security",
+          "evidence": "only_a_clear_asks_for_revocation"
+        },
+        {
+          "property": "origin isolation",
+          "control": "Session Security",
+          "evidence": "an_unrecognised_token_is_anonymous"
+        }
+      ]
+    },
+    {
+      "name": "Site handler",
+      "description": "the site's own installed hooks: trusted to decide policy, not trusted to be free of bugs. The library's job is that a handler mistake cannot become markup injection, an unbounded page, or a loop.",
+      "coverage": [
+        {
+          "property": "content integrity",
+          "control": "AML Injection",
+          "evidence": "rejects_names_that_would_not_survive_a_scan"
+        },
+        {
+          "property": "content integrity",
+          "control": "AML Injection",
+          "evidence": "round_trips_every_construct"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Resource Exhaustion",
+          "evidence": "an_oversized_resolved_page_is_refused_not_truncated"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Resource Exhaustion",
+          "evidence": "a_resolver_returning_an_include_is_refused"
+        },
+        {
+          "property": "credential containment",
+          "control": "Session Security",
+          "evidence": "a_refusal_cannot_carry_a_session"
         }
       ]
     }

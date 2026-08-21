@@ -16,3 +16,34 @@ The production boundary contains the core protocol/parser/origin model, client
 and WASM host, and static server. Social applications and dynamic plugins are
 examples. This reduces the trusted server surface and prevents examples from
 being mistaken for supported infrastructure.
+
+**Amended again**, 2026-08-21: `dustnet-server` now provides three optional
+hooks — include resolution, form submission, session resolution — and a server
+that installs them generates content and accepts writes.
+
+This is a narrowing of the original decision rather than a reversal of it, and
+the distinction is what the amendment turns on:
+
+- **What was rejected stays rejected.** No plugin registry, no
+  operator-installed extensions, no dynamic code loading, no accounts or social
+  application inside the boundary. The `examples/unsupported-social` prototype
+  remains quarantined and unbuilt.
+- **`dustnetd` did not change.** It installs no hooks, so it authenticates
+  nobody, generates nothing, and still refuses `INPUT` with 405. That is held to
+  tests rather than asserted: `without_a_handler_input_is_still_refused` and
+  `without_a_resolver_includes_are_served_verbatim`.
+- **The boundary moved by three traits, not by an application.** What is
+  supported is what the hooks guarantee — escaped generation, bounded
+  submissions, session tokens that never reach a handler. What a site builds on
+  them is the site's, and lives in the site's repository.
+
+Why amend rather than keep social applications wholly outside: the original
+framing left a site with no supported way to serve dynamic content at all, so the
+only worked example was a prototype whose approach to generating AML —
+string concatenation with hand-remembered escaping — had a live injection defect
+in it. Providing a narrow, tested surface is a smaller risk than leaving that as
+the only example to copy.
+
+`verification/threat-model.json` names the adversaries this newly faces, and
+`docs/spec/07-security.md` separates what the library guarantees from what a site
+must still do for itself.

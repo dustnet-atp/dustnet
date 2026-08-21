@@ -255,7 +255,7 @@ FUZZ_SECONDS ?= 300
 FUZZ_RSS_MB ?= 8192
 FUZZ_LOG := verification/fuzz-campaign.tsv
 FUZZ_TARGETS ?= fuzz_scanner fuzz_parser fuzz_pipeline fuzz_protocol \
-                fuzz_protocol_state fuzz_viewer_state fuzz_uri
+                fuzz_protocol_state fuzz_viewer_state fuzz_uri fuzz_serialize
 
 fuzz-campaign:
 	@echo "── fuzz campaign ($(FUZZ_SECONDS)s per target) ──"
@@ -289,8 +289,7 @@ fuzz-campaign:
 
 ci-fuzz-smoke:
 	@echo "── fuzz smoke (10s per target) ──"
-	@for target in fuzz_scanner fuzz_parser fuzz_pipeline fuzz_protocol \
-	               fuzz_protocol_state fuzz_viewer_state fuzz_uri; do \
+	@for target in $(FUZZ_TARGETS); do \
 		echo "   $$target"; \
 		test -d fuzz/seeds/$$target || { echo "missing fuzz/seeds/$$target"; exit 1; }; \
 		mkdir -p fuzz/corpus/$$target; \

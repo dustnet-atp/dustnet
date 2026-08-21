@@ -184,7 +184,7 @@ Two constraints keep this mechanism disjoint from components:
 
 Distinct from `[slot]`, which the component system owns for marking where a `[def]`'s caller content goes: that is resolved at parse time from within the document, this at serve time from outside it.
 
-> **Status.** The element parses and validates, and the production `StaticServer` does not resolve it — it serves authored AML unchanged, so a page served by `dustnetd` today renders its includes as nothing. Resolution requires a server that generates content; see [06-interactivity.md](06-interactivity.md).
+> **Status.** `dustnetd` does not resolve includes: it installs no resolver, serves authored AML unchanged, and a page it serves therefore renders its includes as nothing. A server built on `dustnet-server` that installs an include resolver replaces each placeholder before the page goes on the wire. See [06-interactivity.md](06-interactivity.md).
 
 ## Color System
 

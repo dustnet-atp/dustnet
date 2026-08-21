@@ -1,9 +1,14 @@
 # Security Model
 
-> Production-boundary note: `dustnetd` is a static, plugin-free server with no
-> authentication, custom-handler, or plugin surface. This document describes
-> only that supported boundary — the client, ATP/AML core, WASM host, and
-> `StaticServer`.
+> Production-boundary note: `dustnetd` is a static server that installs no
+> hooks — no include resolution, no form handling, no session resolution — so it
+> authenticates nobody, generates no content, and refuses `INPUT` with 405. This
+> document describes that boundary, plus the guarantees `dustnet-server` makes to
+> a server that *does* install hooks: escaped generation, bounded submissions,
+> and an identity boundary that keeps session tokens away from handlers.
+>
+> What a hooked server does above those guarantees — who may write, password
+> storage, rate limiting — is its own, and is not described here.
 >
 > The `examples/unsupported-social` prototype — accounts, email verification
 > and plugins — is excluded from the workspace, unbuilt and untested by CI, and
@@ -17,12 +22,18 @@ Dustnet is designed around a core reality: **users will connect to untrusted ser
 
 ### Actors
 
-| Actor | Trust Level | Description |
-|-------|-------------|-------------|
-| Client user | Trusted | The person running the ATP client |
-| Site operator | Untrusted | Runs an ATP server, serves content |
-| Network observer | Untrusted | Can observe or modify traffic (MITM) |
-| Other users | Untrusted | Users on the same or different sites |
+Two sides, facing opposite directions. A client trusts nothing a server sends; a
+server that accepts submissions trusts nothing a visitor sends.
+
+| Actor | Trust Level | Faced by | Description |
+|-------|-------------|----------|-------------|
+| Client user | Trusted | — | The person running the ATP client |
+| Site operator | Untrusted | Client | Runs an ATP server, serves content |
+| Network observer | Untrusted | Both | Can observe or modify traffic (MITM) |
+| Other users | Untrusted | Client | Users on the same or different sites |
+| Form submitter | Untrusted | Server | Anyone who can reach the port and send an `INPUT` |
+| Session holder | Untrusted | Server | Presents a token, possibly stolen, expired or invented |
+| Site handler | Trusted for policy, not for correctness | Server | The site's own installed hooks |
 
 ### Trust boundary
 
@@ -33,6 +44,14 @@ under malformed or adversarial input.
 
 The operating system and terminal emulator are trusted. Compromised hosts and
 malicious operator-installed server extensions are out of scope.
+
+A server that installs hooks faces the other direction and must additionally
+preserve **content integrity** — a page contains only markup the server itself
+constructed — and **credential containment** — a session token reaches neither a
+handler nor a page. `dustnetd` installs no hooks, so those adversaries cannot
+reach it; the guarantees are listed because a site server built on
+`dustnet-server` inherits them, and because a guarantee stated only in prose is
+one nobody checks.
 
 Security context is part of origin identity: verified TLS, insecure TLS and
 loopback plaintext do not share sessions, subscriptions, pending updates or
@@ -170,31 +189,116 @@ origin comparison at all.
 
 ## Server-Side Security
 
+`dustnetd` accepts nothing: it installs no include resolver, no input handler and
+no session resolver, so it generates no content, writes nothing, and refuses
+`INPUT` with 405. Everything in this section past Site Isolation therefore
+describes what `dustnet-server` guarantees to a server that *has* installed
+hooks — a site server, of which `dustnet-sites/dustnews` is the worked example.
+
+### What the library guarantees, and what it does not
+
+The split matters, because a site that assumes the wrong half is insecure in a
+way that reads as secure.
+
+**Guaranteed by the library.** Generated content cannot become markup, because a
+handler returns tokens and one escaping serializer writes every bracket. A
+submission is bounded in bytes and in field count before a handler sees it. A
+resolved page over the page limit is refused rather than truncated. A resolver
+cannot make the server loop by returning another placeholder. A session token is
+resolved once, at the boundary, and handlers are handed an identity instead.
+
+**Not guaranteed, and not knowable by a generic ATP server.** Who may write.
+Whether a name is already taken. How often one source may try a password. What a
+field means, how long it may be, and whether it is allowed to contain a tab. How
+passwords are stored. Whether the same account may vote twice. All of that is the
+site's, and a site that skips it has an open write endpoint whatever the library
+does.
+
+Two failure modes worth naming because they are invisible until they bite:
+
+- **A hidden form is not a control.** A renderer that shows a comment box only to
+  signed-in readers has decided presentation. The handler must refuse the same
+  action independently, because a hand-made `INPUT` never came from a form.
+- **Escaping on the way out is not sanitising on the way in.** The serializer
+  stops a submitted tab becoming markup. It does nothing about that tab splitting
+  a row in a tab-separated store — a storage-format concern, fixed where the
+  value is written, and one no amount of AML escaping addresses.
+
 ### Site Isolation
 
 Sites are independent servers. One compromised site cannot affect others. There is no shared runtime, database, or process space. Each site should run in its own container or VM with standard server hardening.
 
 ### Input Validation
 
-Production `StaticServer` rejects `INPUT` and exposes no dynamic handler API.
-Other ATP server implementations that accept form submissions must validate,
-sanitize, and rate-limit all input; client-side AML limits are not a server-side
-security boundary.
+`dustnetd` rejects `INPUT` with status 405, and
+`without_a_handler_input_is_still_refused` holds it to that.
+
+The `dustnet-server` library exposes three optional hooks — an include resolver,
+an input handler, and a session resolver. A server that installs none behaves
+exactly as one with no hooks at all, which is what `dustnetd` does and what
+`without_a_resolver_includes_are_served_verbatim` asserts. A server that installs
+them accepts form submissions, and is then responsible for validating,
+sanitizing and rate-limiting everything it accepts: **client-side AML limits are
+not a server-side security boundary**, and a `maxlen` on a form is a hint to a
+cooperating client, not a constraint on a hand-made `INPUT`.
+
+The library bounds what it hands such a server: an `INPUT` body is capped by
+`MAX_INPUT_MESSAGE_SIZE` and the parsed field vector by `MAX_FIELDS`, so the cost
+of one submission is bounded in both bytes and elements before a handler sees it.
+Everything above that — who may write, how often, and what a field may contain —
+is the handler's, because only the handler knows what the site means.
 
 ### AML Injection
 
 **Threat**: User input is echoed into AML content without escaping, allowing one user to inject AML tags into pages seen by other users (analogous to XSS in web browsers).
 
-**Mitigation**: A dynamic server must escape user content before embedding it
-in AML, including AML's bracket and component-substitution metacharacters.
-`StaticServer` does not generate AML from user input.
+**Mitigation**: Server-generated content is composed as **tokens**, not text.
+`dustnet_core::serialize::to_aml` is the only thing that writes a bracket, and it
+escapes as it writes, so user-submitted content placed in a `Token::Text` cannot
+become markup regardless of what it contains. The property is stated as
+`scan(to_aml(tokens)) == tokens` and checked three ways: unit tests per escaping
+context, the round trip over every AML document in the repository, and the
+`fuzz_serialize` target.
+
+Escaping is not one function. Text content and quoted attribute values have
+different rules, and a URL is a third case where escaping is *insufficient* — a
+perfectly escaped hostile URL is still a phishing link, so scheme checking is a
+semantic control that belongs where a URL enters the system.
+
+A server that instead builds AML by concatenating strings has to remember an
+escape at every interpolation site, and the failure mode is not hypothetical: the
+quarantined prototype in `examples/unsupported-social` escapes a link's title,
+author and domain and then interpolates the submitted URL raw on the next line.
+`dustnetd` generates no AML at all, having no resolver installed.
 
 ### Session Security
 
 The client-side guarantees in this section apply to ATP session directives
-regardless of server implementation. Claims about validating, expiring, or
-revoking tokens describe responsibilities of a session-aware dynamic server;
-production `StaticServer` neither issues nor validates tokens.
+regardless of server implementation. `dustnetd` neither issues nor validates
+tokens, having no session resolver installed.
+
+A server that installs one gets a boundary rather than a convention: the library
+resolves a presented token to an identity *once*, and hands the include resolver
+and input handler that identity and **never the token**. A token is a bearer
+credential and a username is not — a handler holding a token could replay it, log
+it, or embed it in a page it generates, and a token in a page is a
+session-stealing bug that looks like a rendering bug.
+`handlers_receive_an_identity_and_never_the_token` asserts it end to end.
+
+Two consequences of that boundary are worth stating because they are not
+obvious:
+
+- An unrecognised token is indistinguishable from no token. Both resolve to
+  anonymous, because a caller able to tell them apart would be an oracle for
+  whether a token had ever existed.
+- A handler cannot end its own session, since it does not know the token naming
+  it. Revocation therefore runs through `SessionResolver::revoke`, called by the
+  server when a handler's outcome clears the session — which ends exactly the
+  session that was presented rather than every session the person holds.
+
+Storing, expiring and revoking sessions remain the resolver's responsibility.
+Expiry has to be enforced there: the expiry sent to a client lets it tidy up,
+but a client that ignores it must still be refused.
 
 **Threat**: Session tokens are used for cross-site tracking, session hijacking, or privilege escalation across scopes within a site.
 
@@ -284,10 +388,11 @@ For client implementations:
 - WASM execution is fuel-metered with strict budgets
 - Fuzz testing of AML parser with malformed and adversarial input
 
-For production `StaticServer`:
+For `dustnetd`:
 
 - Static-root containment and regular-file checks are enforced
-- `INPUT` is rejected; no custom handler or plugin code is loaded
+- `INPUT` is rejected, and no resolver, handler or session hook is installed, so
+  no code generates content and nothing is written
 - Global, per-IP connection, and per-connection subscription limits are enforced
 - Connections observe shutdown and leave voluntarily, so the drain deadline is
   a backstop rather than the ordinary path
