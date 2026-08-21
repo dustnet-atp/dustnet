@@ -77,6 +77,7 @@ const BUILTIN_ELEMENTS: &[&str] = &[
     "slot",
     "slot-content",
     "br",
+    "include",
 ];
 
 /// Expand components in a token stream.
@@ -267,6 +268,26 @@ fn extract_definitions(
                                 "E031",
                                 format_args!(
                                     "component \"{comp_name}\" references itself (recursive)"
+                                ),
+                                allocation_failed,
+                            );
+                        }
+                        // An [include] in a component body would be expanded
+                        // into every call site and then have $attr
+                        // substitution run over it. Generated content is
+                        // spliced in at serve time, after this pass, so it
+                        // would land inside a region where `$` is live and a
+                        // submitted `$name` could reach a substitution. Keeping
+                        // the two mechanisms disjoint is cheaper to reason
+                        // about than making generated content `$`-safe.
+                        if name == "include" {
+                            try_diagnostic(
+                                diagnostics,
+                                DiagnosticLevel::Error,
+                                "E052",
+                                format_args!(
+                                    "component \"{comp_name}\" contains [include]; \
+                                     server-resolved content cannot appear in a [def] body"
                                 ),
                                 allocation_failed,
                             );

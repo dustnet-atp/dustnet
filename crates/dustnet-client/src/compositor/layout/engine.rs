@@ -3408,4 +3408,43 @@ mod tests {
              (now {height_after}); a measure memo survived across layout passes"
         );
     }
+
+    /// An `[include]` the server did not resolve must render as nothing.
+    ///
+    /// This is the behaviour the element exists to get right. The `{{links}}`
+    /// text-marker convention it replaces failed here: with nothing to expand
+    /// it, the marker was served as literal text and readers saw `{{links}}` on
+    /// the page. An unresolved include is a missing handler, which is the
+    /// origin's problem, not something to show the reader.
+    ///
+    /// Asserted as equality against the same page without the include, which
+    /// says "contributes nothing" more exactly than any substring check.
+    #[test]
+    fn an_unresolved_include_renders_as_nothing() {
+        let with = parse_and_layout(
+            r#"[page mode=document][text]before[/text][include name="links" /][text]after[/text][/page]"#,
+            40,
+            6,
+        );
+        let without = parse_and_layout(
+            "[page mode=document][text]before[/text][text]after[/text][/page]",
+            40,
+            6,
+        );
+
+        for y in 0..6 {
+            assert_eq!(
+                row_text(&with, y),
+                row_text(&without, y),
+                "row {y} differs, so the include contributed something"
+            );
+        }
+        for y in 0..6 {
+            let row = row_text(&with, y);
+            assert!(
+                !row.contains("links") && !row.contains("include"),
+                "the include marker leaked to the reader on row {y}: {row:?}"
+            );
+        }
+    }
 }

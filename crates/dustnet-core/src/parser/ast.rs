@@ -107,6 +107,9 @@ pub enum Element {
 
     // Event bindings (non-visual, declarative)
     On(OnElement),
+
+    // Server-resolved placeholder
+    Include(IncludeElement),
 }
 
 // ─── Layout Elements ─────────────────────────────────────────
@@ -479,6 +482,24 @@ pub struct TextAnimateElement {
 }
 
 // ─── Live Elements ───────────────────────────────────────────
+
+/// A named placeholder for content a server generates, written
+/// `[include name=links /]`.
+///
+/// The server replaces the whole element with generated content before sending
+/// the page, so a client never sees one: an `[include]` arriving over the wire
+/// means the origin has no handler for that name, and it renders as nothing
+/// rather than as the literal text `[include ...]`.
+///
+/// Distinct from `[slot]`, which the component system already owns for marking
+/// where a `[def]`'s caller content goes. That one is resolved at parse time,
+/// entirely within the document; this one is resolved at serve time, from
+/// outside it.
+#[derive(Debug, Clone)]
+pub struct IncludeElement {
+    /// Which handler is expected to fill this. Required.
+    pub name: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct LiveElement {

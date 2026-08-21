@@ -167,6 +167,25 @@ architecture.
 | `buffer` | 100 | Maximum lines retained in the scroll buffer (max 1,000). Oldest content is discarded when exceeded. |
 | `delta` | false | When present, the client requests incremental updates from the server instead of full replacements. Only suitable for append-only content sources. |
 
+### Server-Resolved Content
+
+**Include** (`[include name=... /]`) — A named placeholder that a server replaces with generated content before sending the page. Self-closing; an `[include]` has no children, because anything written inside one would be discarded on substitution.
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `name` | (required) | Which handler is expected to fill this placeholder |
+
+A client never renders an `[include]`. One arriving over the wire means the origin has no handler for that name, and it contributes nothing — deliberately not the literal text, which would show the reader a marker rather than a page.
+
+Two constraints keep this mechanism disjoint from components:
+
+- `include` is a reserved element name, so a `[def]` cannot shadow it.
+- An `[include]` may not appear inside a `[def]` body (error `E052`). A component body is copied into every call site with `$attr` substitution applied, and server content is substituted later, so an include expanded there would place generated content inside a region where `$` is still live.
+
+Distinct from `[slot]`, which the component system owns for marking where a `[def]`'s caller content goes: that is resolved at parse time from within the document, this at serve time from outside it.
+
+> **Status.** The element parses and validates, and the production `StaticServer` does not resolve it — it serves authored AML unchanged, so a page served by `dustnetd` today renders its includes as nothing. Resolution requires a server that generates content; see [06-interactivity.md](06-interactivity.md).
+
 ## Color System
 
 Colors can be specified in three formats:

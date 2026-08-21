@@ -1,0 +1,6 @@
+[def name="card" attrs="who"]
+  [include name="links" /]
+[/def]
+[page mode=document]
+  [card who="anyone" /]
+[/page]

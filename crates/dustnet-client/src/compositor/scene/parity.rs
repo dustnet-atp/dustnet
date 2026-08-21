@@ -161,7 +161,8 @@ fn scene_children(e: &Element) -> Vec<&Element> {
         | Element::ElementDef(_)
         | Element::TextAnimate(_)
         | Element::Tween(_)
-        | Element::On(_) => Vec::new(),
+        | Element::On(_)
+        | Element::Include(_) => Vec::new(),
     }
 }
 
@@ -224,7 +225,7 @@ fn expected_kind(e: &Element) -> KindTag {
         Element::Live(_) => KindTag::LiveRegion,
         Element::Panel(_) => KindTag::Panel,
 
-        Element::Tween(_) | Element::On(_) => {
+        Element::Tween(_) | Element::On(_) | Element::Include(_) => {
             panic!("expected_kind called on ancillary element {e:?}")
         }
     }
@@ -272,6 +273,7 @@ fn element_tag(e: &Element) -> &'static str {
         Element::Details(_) => "Details",
         Element::Pagination(_) => "Pagination",
         Element::On(_) => "On",
+        Element::Include(_) => "Include",
     }
 }
 

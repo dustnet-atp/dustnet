@@ -911,6 +911,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "AML AST payload; aggregate bounded by MAX_ELEMENTS, MAX_DEPTH and the scanner payload limits, constructed fallibly under row transient.parser_result",
     ),
     (
+        "crates/dustnet-core/src/parser/ast.rs",
+        "IncludeElement",
+        "AML AST payload; aggregate bounded by MAX_ELEMENTS, MAX_DEPTH and the scanner payload limits, constructed fallibly under row transient.parser_result",
+    ),
+    (
         "crates/dustnet-core/src/parser/mod.rs",
         "Diagnostic",
         "AML AST payload; aggregate bounded by MAX_ELEMENTS, MAX_DEPTH and the scanner payload limits, constructed fallibly under row transient.parser_result",

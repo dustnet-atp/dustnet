@@ -1,0 +1,5 @@
+[page mode=document title="Server-resolved content"]
+  [text]Content above the placeholder.[/text]
+  [include name="links" /]
+  [text]Content below it.[/text]
+[/page]

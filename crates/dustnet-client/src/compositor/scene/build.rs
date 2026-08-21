@@ -99,8 +99,14 @@ pub fn classify(element: &Element) -> Category {
         // Collapsible
         Element::Details(_) => Category::NodeBearing,
 
-        // Ancillary — no node produced
-        Element::Tween(_) | Element::On(_) => Category::Ancillary,
+        // Ancillary — no node produced.
+        //
+        // `Include` is ancillary because the server resolves it before sending:
+        // one reaching a client means that origin has no handler for the name.
+        // Rendering nothing is deliberate — the failure mode worth avoiding is
+        // showing the reader the marker, which is what the `{{links}}` text
+        // convention did when nothing expanded it.
+        Element::Tween(_) | Element::On(_) | Element::Include(_) => Category::Ancillary,
     }
 }
 
@@ -659,8 +665,8 @@ fn build_element_inner(cx: &mut BuildCtx, element: &Element) -> Option<NodeId> {
         Element::State(s) => Some(build_state(cx, s)),
         Element::Details(d) => Some(build_details(cx, d)),
 
-        // Ancillary — no node.
-        Element::Tween(_) | Element::On(_) => None,
+        // Ancillary — no node. See `classify` for why `Include` is here.
+        Element::Tween(_) | Element::On(_) | Element::Include(_) => None,
     }
 }
 

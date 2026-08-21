@@ -718,6 +718,9 @@ impl Parser {
             // Live
             "live" => Some(self.parse_live(attrs, self_closing)),
 
+            // Server-resolved placeholder
+            "include" => Some(self.parse_include(attrs)),
+
             // Panels
             "panel" => Some(self.parse_panel(attrs, self_closing)),
             "state" => {
@@ -1927,6 +1930,29 @@ impl Parser {
     }
 
     // ─── Live element parser ─────────────────────────────────
+
+    /// Parse `[include name=... /]`.
+    ///
+    /// Always treated as self-closing — an `[include]` has no children, because
+    /// whatever a page author wrote inside one would be discarded when the
+    /// server replaced the element. Accepting children and then dropping them
+    /// silently would be worse than not accepting them, so a closing tag is
+    /// simply never consumed and `[/include]` surfaces as a stray close tag.
+    fn parse_include(&mut self, attrs: &[crate::scanner::Attribute]) -> Element {
+        let mut name = String::new();
+
+        for attr in attrs {
+            if attr.name == "name" {
+                name = self.copy_string(attr_str_value(&attr.value));
+            }
+        }
+
+        if name.is_empty() {
+            self.error("E011", "include element requires name attribute");
+        }
+
+        Element::Include(IncludeElement { name })
+    }
 
     fn parse_live(&mut self, attrs: &[crate::scanner::Attribute], self_closing: bool) -> Element {
         let mut id = String::new();

@@ -1463,3 +1463,72 @@ fn trim_owned_string_handles_whitespace_overlap() {
     assert_eq!(trim_owned_string("  ab".to_string()), "ab");
     assert_eq!(trim_owned_string("ab  ".to_string()), "ab");
 }
+
+// ─── Server-Resolved Includes ────────────────────────────────
+
+#[test]
+fn parses_include_with_a_name() {
+    let doc = parse_ok(r#"[page mode=document][include name="links" /][/page]"#);
+    match &doc.page.children[0] {
+        Element::Include(i) => assert_eq!(i.name, "links"),
+        other => panic!("expected Include, got {other:?}"),
+    }
+}
+
+#[test]
+fn include_requires_a_name() {
+    let result = parse_with_errors("[page mode=document][include /][/page]");
+    assert!(has_diagnostic_code(&result, "E011"));
+}
+
+/// An `[include]` is self-closing whether or not it is written that way. A page
+/// author's children would be discarded when the server substituted content, so
+/// they are never adopted in the first place.
+#[test]
+fn include_takes_no_children() {
+    let doc = parse_ok(r#"[page mode=document][include name="links"][text]x[/text][/page]"#);
+    match &doc.page.children[0] {
+        Element::Include(i) => assert_eq!(i.name, "links"),
+        other => panic!("expected Include, got {other:?}"),
+    }
+    // The [text] is a sibling of the include, not a child of it.
+    assert!(
+        matches!(doc.page.children.get(1), Some(Element::Text(_))),
+        "expected the text to become a sibling: {:?}",
+        doc.page.children
+    );
+}
+
+/// Components and server-resolved content are kept disjoint. A `[def]` body is
+/// copied into every call site and has `$attr` substitution run over it, so an
+/// include expanded there would place generated content — which arrives later,
+/// at serve time — inside a region where `$` is still live.
+#[test]
+fn include_is_rejected_inside_a_component_body() {
+    let result = parse_with_errors(
+        r#"[def name="card" attrs="who"][include name="links" /][/def]
+           [page mode=document][card who="x" /][/page]"#,
+    );
+    assert!(
+        has_diagnostic_code(&result, "E052"),
+        "{:?}",
+        result.diagnostics
+    );
+}
+
+/// `include` is reserved, so a component cannot shadow it and quietly become
+/// the thing that resolves server content.
+#[test]
+fn a_component_cannot_be_named_include() {
+    let result = parse_with_errors(
+        r#"[def name="include"][text]mine[/text][/def][page mode=document][/page]"#,
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("include")),
+        "{:?}",
+        result.diagnostics
+    );
+}
