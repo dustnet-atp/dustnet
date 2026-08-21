@@ -1,6 +1,6 @@
 # dustnet
 
-The [Dustnet](https://github.com/roobert/dustnet) client and AML authoring CLI.
+The [Dustnet](https://github.com/dustnet-atp/dustnet) client and AML authoring CLI.
 
 ```
 dustnet render page.aml       # render a page to the terminal

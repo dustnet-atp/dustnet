@@ -1,7 +1,7 @@
 # dustnet-core
 
 ATP/AML protocol, parser, scanner, URI, origin and session primitives for
-[Dustnet](https://github.com/roobert/dustnet), a terminal hypertext protocol.
+[Dustnet](https://github.com/dustnet-atp/dustnet), a terminal hypertext protocol.
 
 No client or server dependency: this crate is the shared substrate both sides
 build on. Every panicking operation on a remote-input path is denied at the

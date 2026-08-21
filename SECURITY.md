@@ -12,7 +12,7 @@ minor receives security fixes for 90 days.
 ## Reporting
 
 Report vulnerabilities through the repository's private
-[security-advisory form](https://github.com/roobert/dustnet/security/advisories/new).
+[security-advisory form](https://github.com/dustnet-atp/dustnet/security/advisories/new).
 Do not open a public issue. We aim to acknowledge reports within three business days,
 fix critical issues within seven days and high issues within fourteen days,
 and coordinate disclosure within 90 days.

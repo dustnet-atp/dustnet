@@ -22,7 +22,7 @@ The version is required — Cargo skips pre-releases for a bare requirement.
 ### From source
 
 ```console
-git clone https://github.com/roobert/dustnet
+git clone https://github.com/dustnet-atp/dustnet
 cd dustnet
 cargo run --release --locked -p dustnet -- connect atp://dustnet.io
 ```

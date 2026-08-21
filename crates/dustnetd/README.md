@@ -1,6 +1,6 @@
 # dustnetd
 
-The [Dustnet](https://github.com/roobert/dustnet) static ATP server binary.
+The [Dustnet](https://github.com/dustnet-atp/dustnet) static ATP server binary.
 
 ```
 dustnetd ./site --cert cert.pem --key key.pem

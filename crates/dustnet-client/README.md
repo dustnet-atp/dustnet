@@ -1,7 +1,7 @@
 # dustnet-client
 
 Terminal client, compositor, navigation and AML/WASM runtime for
-[Dustnet](https://github.com/roobert/dustnet).
+[Dustnet](https://github.com/dustnet-atp/dustnet).
 
 Remote content reaches every parser, layout and rendering path here, so the
 crate is built around bounded resource use: allocations on remote-influenced
