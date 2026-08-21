@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0-alpha.1 - Unreleased
+## 0.2.0-alpha.1 - 2026-08-21
 
 ### Breaking
 
