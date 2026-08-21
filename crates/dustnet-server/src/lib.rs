@@ -17,6 +17,7 @@
 //! Bounded, plugin-free static ATP server.
 
 mod certs;
+pub mod include;
 mod live_watch;
 mod transport;
 
@@ -289,6 +290,7 @@ pub struct StaticServerConfig {
     max_connections: usize,
     max_connections_per_ip: usize,
     read_timeout: Duration,
+    resolver: Option<Arc<dyn crate::include::IncludeResolver>>,
 }
 
 impl StaticServerConfig {
@@ -309,7 +311,23 @@ impl StaticServerConfig {
             max_connections: DEFAULT_MAX_CONNECTIONS,
             max_connections_per_ip: DEFAULT_MAX_CONNECTIONS_PER_IP,
             read_timeout: READ_TIMEOUT,
+            resolver: None,
         })
+    }
+
+    /// Install a resolver for `[include]` placeholders.
+    ///
+    /// Absent by default, and `dustnetd` never sets one: a server without a
+    /// resolver serves authored AML unchanged, so an `[include]` travels to the
+    /// client and renders as nothing. Setting one is what lets a page carry
+    /// generated content, and it is the only way this server produces markup it
+    /// did not read from a file.
+    pub fn with_include_resolver(
+        mut self,
+        resolver: Arc<dyn crate::include::IncludeResolver>,
+    ) -> Self {
+        self.resolver = Some(resolver);
+        self
     }
 
     /// Bind a plaintext development server. The listener enforces loopback-only use.
@@ -417,6 +435,7 @@ impl StaticServer {
             ProtocolError::InvalidMessage("static server may only be run once".into())
         })?;
         let root = Arc::new(config.root);
+        let resolver = config.resolver;
         let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_connections));
 
         // One reader for the whole server. Every connection subscribing to a
@@ -468,6 +487,7 @@ impl StaticServer {
                         *count += 1;
                     }
                     let root = root.clone();
+                    let resolver = resolver.clone();
                     let counts = per_ip.clone();
                     let subscription_budget = subscription_budget.clone();
                     let connection_shutdown = self.shutdown_rx.clone();
@@ -485,6 +505,7 @@ impl StaticServer {
                                 match serve_connection(
                                     stream,
                                     &root,
+                                    resolver.as_deref(),
                                     subscription_budget,
                                     watcher,
                                     read_timeout,
@@ -538,6 +559,7 @@ impl StaticServer {
 async fn serve_connection(
     mut stream: AtpServerStream,
     root: &Path,
+    resolver: Option<&dyn crate::include::IncludeResolver>,
     subscription_budget: SubscriptionBudget,
     watcher: LiveWatcher,
     read_timeout: Duration,
@@ -609,7 +631,7 @@ async fn serve_connection(
                     tracing::debug!(message = ?frame.msg_type, "request");
                 }
                 match frame.msg_type {
-                    MessageType::Get => serve_get(&mut stream, root, frame).await?,
+                    MessageType::Get => serve_get(&mut stream, root, resolver, frame).await?,
                     MessageType::Input => {
                         send_error(&mut stream, 405, "static server rejects INPUT").await?
                     }
@@ -700,6 +722,7 @@ async fn serve_connection(
 async fn serve_get(
     stream: &mut AtpServerStream,
     root: &Path,
+    resolver: Option<&dyn crate::include::IncludeResolver>,
     frame: RawFrame,
 ) -> Result<(), ProtocolError> {
     let text = std::str::from_utf8(&frame.body)
@@ -748,6 +771,36 @@ async fn serve_get(
     } else {
         let content = String::from_utf8(body)
             .map_err(|_| ProtocolError::InvalidMessage("AML file is not UTF-8".into()))?;
+
+        // Substitute [include] placeholders before anything reads the content.
+        // `has_live_regions` in particular must see the resolved page: a
+        // resolver may emit a [live] region, and a flag computed from the
+        // authored source would leave the client never subscribing to it.
+        let content = match resolver {
+            Some(resolver) => {
+                let request = crate::include::IncludeRequest {
+                    path: &get.path,
+                    query: get.query.as_deref(),
+                };
+                let resolved = crate::include::resolve_page(&content, resolver, &request)?;
+                // A resolver can produce more than a page may carry. Refuse
+                // rather than truncate: half a page of stories is a worse
+                // answer than an error naming the cause.
+                if resolved.len() > MAX_PAGE_MESSAGE_SIZE {
+                    tracing::warn!(
+                        path = %get.path,
+                        bytes = resolved.len(),
+                        limit = MAX_PAGE_MESSAGE_SIZE,
+                        "resolved page exceeds the page limit"
+                    );
+                    send_error(stream, 500, "resolved page too large").await?;
+                    return Ok(());
+                }
+                resolved
+            }
+            None => content,
+        };
+
         let has_live_regions = content.contains("[live");
         let page = PageMessage {
             content,
@@ -2502,5 +2555,133 @@ mod tests {
             read_static_body(opened, 3, 42).await,
             Err(ProtocolError::InvalidMessage(_))
         ));
+    }
+
+    /// A resolver's content reaches the wire, and the placeholder does not.
+    ///
+    /// The unit tests in `include` cover substitution; this covers the wiring,
+    /// which is the part that can silently not happen — a resolver configured
+    /// but never consulted would leave every page looking exactly like the
+    /// no-resolver case.
+    #[tokio::test]
+    async fn a_configured_resolver_substitutes_includes_on_the_wire() {
+        struct Stories;
+        impl crate::include::IncludeResolver for Stories {
+            fn resolve(
+                &self,
+                name: &str,
+                request: &crate::include::IncludeRequest<'_>,
+            ) -> Option<Vec<dustnet_core::scanner::Token>> {
+                assert_eq!(request.path, "/index.aml");
+                (name == "links").then(|| {
+                    vec![
+                        dustnet_core::scanner::Token::OpenTag {
+                            name: "text".into(),
+                            attributes: Vec::new(),
+                            self_closing: false,
+                        },
+                        dustnet_core::scanner::Token::Text("a generated story".into()),
+                        dustnet_core::scanner::Token::CloseTag {
+                            name: "text".into(),
+                        },
+                    ]
+                })
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("index.aml"),
+            r#"[page mode=document][include name="links" /][/page]"#,
+        )
+        .unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_include_resolver(Arc::new(Stories));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Hello,
+                flags: 0,
+                body: b"HELLO/0.2\n".to_vec(),
+            })
+            .await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Get,
+                flags: 0,
+                body: b"GET /index.aml\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.contains("a generated story"), "{body}");
+        assert!(
+            !body.contains("include"),
+            "the placeholder survived: {body}"
+        );
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// Without a resolver the server is byte-for-byte what it was: the include
+    /// travels to the client, which renders it as nothing. This is the
+    /// assertion that `dustnetd` has not quietly become dynamic.
+    #[tokio::test]
+    async fn without_a_resolver_includes_are_served_verbatim() {
+        let source = r#"[page mode=document][include name="links" /][/page]"#;
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), source).unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap();
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Hello,
+                flags: 0,
+                body: b"HELLO/0.2\n".to_vec(),
+            })
+            .await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Get,
+                flags: 0,
+                body: b"GET /index.aml\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        assert_eq!(String::from_utf8(response.body).unwrap(), source);
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
     }
 }
