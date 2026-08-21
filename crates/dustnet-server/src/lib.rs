@@ -18,6 +18,7 @@
 
 mod certs;
 pub mod include;
+pub mod input;
 mod live_watch;
 mod transport;
 
@@ -29,7 +30,7 @@ use std::time::Duration;
 
 use dustnet_core::protocol::frame::{MessageType, RawFrame, allocate_frame_body};
 use dustnet_core::protocol::message::{
-    ErrorMessage, GetMessage, HelloMessage, PageFlags, PageMessage, SubscribeMessage,
+    ErrorMessage, GetMessage, HelloMessage, InputMessage, PageFlags, PageMessage, SubscribeMessage,
     SubscribeMode, UpdateMessage, WelcomeMessage,
 };
 use dustnet_core::protocol::{
@@ -291,6 +292,7 @@ pub struct StaticServerConfig {
     max_connections_per_ip: usize,
     read_timeout: Duration,
     resolver: Option<Arc<dyn crate::include::IncludeResolver>>,
+    input_handler: Option<Arc<dyn crate::input::InputHandler>>,
 }
 
 impl StaticServerConfig {
@@ -312,6 +314,7 @@ impl StaticServerConfig {
             max_connections_per_ip: DEFAULT_MAX_CONNECTIONS_PER_IP,
             read_timeout: READ_TIMEOUT,
             resolver: None,
+            input_handler: None,
         })
     }
 
@@ -327,6 +330,17 @@ impl StaticServerConfig {
         resolver: Arc<dyn crate::include::IncludeResolver>,
     ) -> Self {
         self.resolver = Some(resolver);
+        self
+    }
+
+    /// Install a handler for form submissions.
+    ///
+    /// Absent by default, and `dustnetd` never sets one: without a handler
+    /// `INPUT` is refused with 405, which is what this server did before
+    /// handlers existed. Installing one is what lets a site accept a
+    /// submission, and it is the only way this server changes anything on disk.
+    pub fn with_input_handler(mut self, handler: Arc<dyn crate::input::InputHandler>) -> Self {
+        self.input_handler = Some(handler);
         self
     }
 
@@ -436,6 +450,7 @@ impl StaticServer {
         })?;
         let root = Arc::new(config.root);
         let resolver = config.resolver;
+        let input_handler = config.input_handler;
         let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_connections));
 
         // One reader for the whole server. Every connection subscribing to a
@@ -488,6 +503,7 @@ impl StaticServer {
                     }
                     let root = root.clone();
                     let resolver = resolver.clone();
+                    let input_handler = input_handler.clone();
                     let counts = per_ip.clone();
                     let subscription_budget = subscription_budget.clone();
                     let connection_shutdown = self.shutdown_rx.clone();
@@ -504,8 +520,11 @@ impl StaticServer {
                             Ok(Ok(stream)) => {
                                 match serve_connection(
                                     stream,
-                                    &root,
-                                    resolver.as_deref(),
+                                    SiteContext {
+                                        root: &root,
+                                        resolver: resolver.as_deref(),
+                                        input_handler: input_handler.as_deref(),
+                                    },
                                     subscription_budget,
                                     watcher,
                                     read_timeout,
@@ -558,8 +577,7 @@ impl StaticServer {
 
 async fn serve_connection(
     mut stream: AtpServerStream,
-    root: &Path,
-    resolver: Option<&dyn crate::include::IncludeResolver>,
+    site: SiteContext<'_>,
     subscription_budget: SubscriptionBudget,
     watcher: LiveWatcher,
     read_timeout: Duration,
@@ -631,10 +649,8 @@ async fn serve_connection(
                     tracing::debug!(message = ?frame.msg_type, "request");
                 }
                 match frame.msg_type {
-                    MessageType::Get => serve_get(&mut stream, root, resolver, frame).await?,
-                    MessageType::Input => {
-                        send_error(&mut stream, 405, "static server rejects INPUT").await?
-                    }
+                    MessageType::Get => serve_get(&mut stream, site, frame).await?,
+                    MessageType::Input => serve_input(&mut stream, site, frame).await?,
                     MessageType::Subscribe => {
                         if subscriptions.len() >= MAX_SUBSCRIPTIONS_PER_CONNECTION {
                             return Err(ProtocolError::InvalidMessage(
@@ -643,7 +659,7 @@ async fn serve_connection(
                         } else {
                             subscriptions.push(serve_subscription(
                                 &mut stream,
-                                root,
+                                site.root,
                                 frame,
                                 &watcher,
                                 &wake_tx,
@@ -719,17 +735,50 @@ async fn serve_connection(
     }
 }
 
+/// What a connection needs to answer a request: where the site lives, and the
+/// optional hooks that let it generate content and accept submissions.
+///
+/// Bundled rather than passed separately because these three always travel
+/// together and are all `None`-by-default policy, not per-request state.
+#[derive(Clone, Copy)]
+struct SiteContext<'a> {
+    root: &'a Path,
+    resolver: Option<&'a dyn crate::include::IncludeResolver>,
+    input_handler: Option<&'a dyn crate::input::InputHandler>,
+}
+
 async fn serve_get(
     stream: &mut AtpServerStream,
-    root: &Path,
-    resolver: Option<&dyn crate::include::IncludeResolver>,
+    site: SiteContext<'_>,
     frame: RawFrame,
 ) -> Result<(), ProtocolError> {
     let text = std::str::from_utf8(&frame.body)
         .map_err(|_| ProtocolError::InvalidMessage("GET is not UTF-8".into()))?;
     let get = GetMessage::parse(text)?;
     tracing::debug!(path = %get.path, "GET");
-    let path = resolve_path(root, &get.path).await?;
+    serve_path(
+        stream,
+        site.root,
+        site.resolver,
+        &get.path,
+        get.query.as_deref(),
+    )
+    .await
+}
+
+/// Serve one path, resolving includes if a resolver is installed.
+///
+/// Shared by GET and by an accepted submission, which is the point: a page
+/// looks the same whether it was asked for or arrived at by submitting a form,
+/// because it is produced by the same code.
+async fn serve_path(
+    stream: &mut AtpServerStream,
+    root: &Path,
+    resolver: Option<&dyn crate::include::IncludeResolver>,
+    request_path: &str,
+    query: Option<&str>,
+) -> Result<(), ProtocolError> {
+    let path = resolve_path(root, request_path).await?;
     let limit = if path
         .extension()
         .is_some_and(|extension| extension == "wasm")
@@ -741,7 +790,7 @@ async fn serve_get(
     let file = match tokio::fs::File::open(&path).await {
         Ok(file) => file,
         Err(_) => {
-            tracing::debug!(path = %get.path, "404 not found");
+            tracing::debug!(path = %request_path, "404 not found");
             send_error(stream, 404, "not found").await?;
             return Ok(());
         }
@@ -753,7 +802,7 @@ async fn serve_get(
             return Ok(());
         }
     };
-    let owner_key = subscription_owner_key(&get.path, "");
+    let owner_key = subscription_owner_key(request_path, "");
     let body = read_static_body(file, metadata.len() as usize, owner_key).await?;
     if path
         .extension()
@@ -779,8 +828,8 @@ async fn serve_get(
         let content = match resolver {
             Some(resolver) => {
                 let request = crate::include::IncludeRequest {
-                    path: &get.path,
-                    query: get.query.as_deref(),
+                    path: request_path,
+                    query,
                 };
                 let resolved = crate::include::resolve_page(&content, resolver, &request)?;
                 // A resolver can produce more than a page may carry. Refuse
@@ -788,7 +837,7 @@ async fn serve_get(
                 // answer than an error naming the cause.
                 if resolved.len() > MAX_PAGE_MESSAGE_SIZE {
                     tracing::warn!(
-                        path = %get.path,
+                        path = %request_path,
                         bytes = resolved.len(),
                         limit = MAX_PAGE_MESSAGE_SIZE,
                         "resolved page exceeds the page limit"
@@ -821,6 +870,57 @@ async fn serve_get(
             },
         )
         .await
+    }
+}
+
+/// Handle a form submission.
+///
+/// Without a handler this is the 405 it always was, so a server that installs
+/// none behaves exactly as it did before submissions were possible.
+///
+/// An accepted submission answers with a REDIRECT rather than a page. The
+/// client then GETs the target, which renders through the include resolver, so
+/// there is one path that generates a page whether or not a submission
+/// preceded it — and the person who submitted ends up on a URL they can reload
+/// without submitting again.
+async fn serve_input(
+    stream: &mut AtpServerStream,
+    site: SiteContext<'_>,
+    frame: RawFrame,
+) -> Result<(), ProtocolError> {
+    let Some(handler) = site.input_handler else {
+        send_error(stream, 405, "server accepts no form submissions").await?;
+        return Ok(());
+    };
+
+    let text = std::str::from_utf8(&frame.body)
+        .map_err(|_| ProtocolError::InvalidMessage("INPUT is not UTF-8".into()))?;
+    // `InputMessage::parse` enforces MAX_INPUT_MESSAGE_SIZE, so the body is
+    // bounded before anything here allocates from it.
+    let input = InputMessage::parse(text)?;
+
+    let (path, query) = crate::input::split_query(&input.path);
+    let fields = crate::input::FormFields::parse(&input.form_data);
+    tracing::debug!(path, fields = fields.len(), "INPUT");
+
+    let request = crate::input::InputRequest {
+        path,
+        query,
+        fields: &fields,
+    };
+
+    match handler.handle(&request) {
+        crate::input::InputOutcome::Render { path, query } => {
+            tracing::info!(%path, "submission accepted");
+            serve_path(stream, site.root, site.resolver, &path, query.as_deref()).await
+        }
+        crate::input::InputOutcome::Rejected(reason) => {
+            // Logged at the same level as an acceptance. A submission refused
+            // is as much a thing an operator wants to see as one taken.
+            tracing::info!(path, reason = %reason, "submission refused");
+            send_error(stream, 400, &reason).await?;
+            Ok(())
+        }
     }
 }
 
@@ -2099,6 +2199,14 @@ mod tests {
         task.await.unwrap().unwrap();
     }
 
+    fn hello_frame() -> RawFrame {
+        RawFrame {
+            msg_type: MessageType::Hello,
+            flags: 0,
+            body: b"HELLO/0.2\n".to_vec(),
+        }
+    }
+
     fn ping_frame() -> RawFrame {
         RawFrame {
             msg_type: MessageType::Ping,
@@ -2679,6 +2787,149 @@ mod tests {
         let response = client.receive().await;
         assert_eq!(response.msg_type, MessageType::Page);
         assert_eq!(String::from_utf8(response.body).unwrap(), source);
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// Without a handler, INPUT is refused exactly as it was before
+    /// submissions were possible. This is the assertion that `dustnetd` has
+    /// not quietly gained a write path.
+    #[tokio::test]
+    async fn without_a_handler_input_is_still_refused() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), "[page][/page]").unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap();
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /index\nForm: a=b\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Error);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.contains("405"), "{body}");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// An accepted submission answers with the page itself, and the handler
+    /// sees the fields and the action's query.
+    ///
+    /// A page rather than a redirect because `validate_redirect_body` requires
+    /// an absolute `atp://` target — the client parses it rather than resolving
+    /// it — and a server does not know its own public hostname.
+    #[tokio::test]
+    async fn an_accepted_submission_answers_with_the_page() {
+        struct Accepts;
+        impl crate::input::InputHandler for Accepts {
+            fn handle(
+                &self,
+                request: &crate::input::InputRequest<'_>,
+            ) -> crate::input::InputOutcome {
+                assert_eq!(request.path, "/index");
+                assert_eq!(request.query, Some("reply=7"));
+                assert_eq!(request.fields.get("body"), Some("hello world"));
+                crate::input::InputOutcome::render("/index")
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), "[page][/page]").unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_input_handler(Arc::new(Accepts));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /index?reply=7\nForm: body=hello+world\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        assert_eq!(String::from_utf8(response.body).unwrap(), "[page][/page]");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// A refusal reaches the person who submitted, with the handler's reason.
+    #[tokio::test]
+    async fn a_refused_submission_returns_the_reason() {
+        struct Refuses;
+        impl crate::input::InputHandler for Refuses {
+            fn handle(&self, _: &crate::input::InputRequest<'_>) -> crate::input::InputOutcome {
+                crate::input::InputOutcome::Rejected("a title is required".into())
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), "[page][/page]").unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_input_handler(Arc::new(Refuses));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /index\nForm: title=\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Error);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.contains("400"), "{body}");
+        assert!(body.contains("a title is required"), "{body}");
 
         drop(client);
         shutdown.send(true).unwrap();
