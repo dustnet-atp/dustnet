@@ -1179,9 +1179,16 @@ struct Row {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.iter().any(|arg| arg != "--check" && arg != "--report") {
-        eprintln!("usage: dustnet-allocation-audit [--check] [--report]");
+    if args
+        .iter()
+        .any(|arg| arg != "--check" && arg != "--report" && arg != "--fuzz-fingerprint")
+    {
+        eprintln!("usage: dustnet-allocation-audit [--check] [--report] [--fuzz-fingerprint]");
         std::process::exit(2);
+    }
+    if args.iter().any(|arg| arg == "--fuzz-fingerprint") {
+        println!("{}", fuzz_code_fingerprint(&repository_root()));
+        return;
     }
     if args.iter().any(|arg| arg == "--report") {
         report(&repository_root());
@@ -2743,29 +2750,86 @@ fn crate_sources(member: &Path) -> Vec<(String, String)> {
 const FUZZ_LOG: &str = "verification/fuzz-campaign.tsv";
 const FUZZ_TARGET_DIR: &str = "fuzz/fuzz_targets";
 
-/// Fuzz targets with no campaign row for the current workspace version.
+/// Zero-based index of the fingerprint column in [`FUZZ_LOG`].
+const FUZZ_CODE_COLUMN: usize = 8;
+
+/// Directories whose Rust sources a fuzz campaign exercises.
+const FUZZ_CODE_ROOTS: &[&str] = &["crates", FUZZ_TARGET_DIR];
+
+/// A stable digest of the code a fuzz campaign covers.
+///
+/// FNV-1a over every `.rs` path and its bytes, walked in sorted order. Written
+/// out by hand rather than taken from a crate because this value is committed
+/// to [`FUZZ_LOG`] and compared against months later: `DefaultHasher` is
+/// explicitly not stable across releases of the standard library, so a row
+/// recorded today would stop matching after a toolchain upgrade and demand a
+/// campaign nothing had invalidated.
+///
+/// Only sources are hashed. Manifests are excluded deliberately — a version
+/// bump or a licence change alters no behaviour a fuzz target can reach, and
+/// including them would reintroduce exactly the false invalidation this
+/// replaces.
+fn fuzz_code_fingerprint(root: &Path) -> String {
+    let mut files = Vec::new();
+    for dir in FUZZ_CODE_ROOTS {
+        collect_rust_sources(&root.join(dir), root, &mut files);
+    }
+    files.sort();
+
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |bytes: &[u8]| {
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    for relative in &files {
+        feed(relative.as_bytes());
+        if let Ok(bytes) = fs::read(root.join(relative)) {
+            feed(&bytes);
+        }
+    }
+    format!("{hash:016x}")
+}
+
+/// Every `.rs` file under `dir`, as paths relative to `root`.
+fn collect_rust_sources(dir: &Path, root: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if path.file_name().and_then(|name| name.to_str()) != Some("target") {
+                collect_rust_sources(&path, root, out);
+            }
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+            && let Ok(relative) = path.strip_prefix(root)
+            && let Some(text) = relative.to_str()
+        {
+            out.push(text.to_string());
+        }
+    }
+}
+
+/// Fuzz targets with no campaign row for the code currently in the tree.
 ///
 /// "Run it for hours" is unrepeatable and so cannot be a closure condition.
-/// A row per target per version is: it says how long the target actually ran,
-/// how many executions that bought, and on what host and toolchain — without
-/// which an execution count means nothing. Adding a fuzz target therefore
-/// fails the build until it has been run.
+/// A row per target is: it says how long the target actually ran, how many
+/// executions that bought, and on what host and toolchain — without which an
+/// execution count means nothing. Adding a fuzz target therefore fails the
+/// build until it has been run.
 ///
-/// The version is read from the workspace manifest rather than passed in, so
-/// bumping the version invalidates every row at once. That is the intended
-/// behaviour: a campaign against different code is not evidence about this
-/// code.
+/// Rows are matched on [`fuzz_code_fingerprint`], not on the workspace
+/// version. The condition being enforced is that no release ships code no
+/// campaign has covered, and the version answers that only by accident: it
+/// changes when the licence text changes and stays put when a source file is
+/// edited without a bump. Keying on the fuzzed bytes says what was meant, and
+/// it says it about the tree rather than about a label attached to the tree.
+///
+/// A row whose fingerprint column is `-` predates this and matches nothing.
 fn uncampaigned_fuzz_targets(root: &Path) -> Vec<String> {
-    let Ok(manifest) = fs::read_to_string(root.join("Cargo.toml")) else {
-        return Vec::new();
-    };
-    let Some(version) = manifest
-        .lines()
-        .find_map(|line| line.strip_prefix("version = \""))
-        .and_then(|rest| rest.split('"').next())
-    else {
-        return vec!["<workspace version unreadable>".to_string()];
-    };
+    let fingerprint = fuzz_code_fingerprint(root);
 
     let mut targets = Vec::new();
     if let Ok(entries) = fs::read_dir(root.join(FUZZ_TARGET_DIR)) {
@@ -2784,10 +2848,10 @@ fn uncampaigned_fuzz_targets(root: &Path) -> Vec<String> {
     let campaigned: BTreeSet<&str> = log
         .lines()
         .filter_map(|line| {
-            let mut fields = line.split('\t');
-            let row_version = fields.next()?;
-            let target = fields.next()?;
-            (row_version == version).then_some(target)
+            let fields: Vec<&str> = line.split('\t').collect();
+            let target = fields.get(1)?;
+            let row_code = fields.get(FUZZ_CODE_COLUMN)?;
+            (*row_code == fingerprint).then_some(*target)
         })
         .collect();
 
@@ -3453,10 +3517,11 @@ fn binding_name(code: &str, offset: usize) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// Every fuzz target has been run against this version, with the result
-    /// recorded. A new target fails here until a campaign has covered it.
+    /// Every fuzz target has been run against the code now in the tree, with
+    /// the result recorded. A new target, or an edit to a fuzzed source, fails
+    /// here until a campaign has covered it.
     #[test]
-    fn every_fuzz_target_has_a_campaign_row_for_this_version() {
+    fn every_fuzz_target_has_a_campaign_row_for_this_code() {
         assert_eq!(
             uncampaigned_fuzz_targets(&repository_root()),
             Vec::<String>::new()

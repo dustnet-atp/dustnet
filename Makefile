@@ -261,7 +261,8 @@ fuzz-campaign:
 	@echo "── fuzz campaign ($(FUZZ_SECONDS)s per target) ──"
 	@version=$$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1); \
 	toolchain=$$(rustup run $(NIGHTLY) rustc --version | awk '{print $$1" "$$2}'); \
-	test -s $(FUZZ_LOG) || printf 'version\ttarget\tseconds\texecutions\texecs_per_sec\tcrashes\thost\ttoolchain\n' > $(FUZZ_LOG); \
+	code=$$($(MISE) cargo run --quiet --manifest-path tools/allocation-audit/Cargo.toml -- --fuzz-fingerprint); \
+	test -s $(FUZZ_LOG) || printf 'version\ttarget\tseconds\texecutions\texecs_per_sec\tcrashes\thost\ttoolchain\tcode\n' > $(FUZZ_LOG); \
 	for target in $(FUZZ_TARGETS); do \
 		echo "   $$target"; \
 		mkdir -p fuzz/corpus/$$target; \
@@ -278,9 +279,9 @@ fuzz-campaign:
 		execs=$$(sed -n 's/^stat::number_of_executed_units: *//p' "$$log" | tail -1); \
 		rate=$$(sed -n 's/^stat::average_exec_per_sec: *//p' "$$log" | tail -1); \
 		if [ "$$status" -eq 0 ]; then crashes=0; else crashes=1; tail -40 "$$log"; fi; \
-		printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
 			"$$version" "$$target" "$(FUZZ_SECONDS)" "$${execs:-unknown}" \
-			"$${rate:-unknown}" "$$crashes" "$(HOST_TRIPLE)" "$$toolchain" \
+			"$${rate:-unknown}" "$$crashes" "$(HOST_TRIPLE)" "$$toolchain" "$$code" \
 			>> $(FUZZ_LOG); \
 		rm -f "$$log"; \
 		test "$$crashes" -eq 0 || { echo "  $$target crashed; record a finding and commit a seed"; exit 1; }; \
