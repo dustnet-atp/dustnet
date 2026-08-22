@@ -1,2 +1,24 @@
 target/
 .git/
+
+# The image builds one crate out of crates/, so nothing below is a build input.
+# They were all in the context until now, which cost twice: `COPY . .` shipped
+# them to the daemon on every build, and any edit to any of them invalidated the
+# `cargo install` layer, so a README or workflow change forced a full recompile
+# of the workspace. fuzz/ is 3.6G of corpora on its own and tools/ is 398M of
+# build artefacts.
+#
+# Excluding the Dockerfile is safe: buildx reads it through -f, not out of the
+# context, so it is not a file the build can miss.
+fuzz/
+tools/
+effects/
+examples/
+docs/
+verification/
+supply-chain/
+.github/
+*.md
+Dockerfile
+.dockerignore
+Makefile
