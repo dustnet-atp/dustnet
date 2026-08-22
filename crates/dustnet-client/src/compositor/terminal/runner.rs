@@ -4204,12 +4204,24 @@ async fn viewer_main_loop(
                                 }
 
                                 if !navigation_deferred && runtime.client.is_some() {
-                                    let new_uri = match lifecycle
-                                        .current_uri
-                                        .as_ref()
-                                        .and_then(|u| u.resolve(&href).ok())
-                                    {
-                                        Some(u) => u,
+                                    // A link that cannot be resolved used to be
+                                    // dropped in silence, so activating an
+                                    // `https://` title looked like a dead key.
+                                    // Say why instead: `resolve` names the
+                                    // scheme it refused, and that is exactly
+                                    // what the reader needs to know.
+                                    let resolved =
+                                        lifecycle.current_uri.as_ref().map(|u| u.resolve(&href));
+                                    let new_uri = match resolved {
+                                        Some(Ok(uri)) => uri,
+                                        Some(Err(error)) => {
+                                            runtime.command_line.set_message(
+                                                &format!("cannot open: {error}"),
+                                                true,
+                                            );
+                                            runtime.needs_redraw = true;
+                                            continue;
+                                        }
                                         None => continue,
                                     };
 

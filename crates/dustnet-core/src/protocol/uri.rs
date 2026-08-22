@@ -14,6 +14,28 @@ pub struct AtpUri {
     query: Option<String>,
 }
 
+/// The scheme of `reference`, if it is an absolute URI in some other protocol.
+///
+/// RFC 3986's rule for telling an absolute URI from a relative reference: a
+/// scheme is `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` followed by `:`,
+/// before any `/`. Checking for `://` alone is not enough — `mailto:someone`
+/// has no slashes and would otherwise be resolved as a filename.
+///
+/// The position of the colon relative to the first `/` is what keeps an ordinary
+/// path safe: `sub/odd:name.aml` has its colon after a slash, so it is a path.
+fn foreign_scheme(reference: &str) -> Option<&str> {
+    let colon = reference.find(':')?;
+    if reference[..colon].contains('/') {
+        return None;
+    }
+    let scheme = &reference[..colon];
+    let mut chars = scheme.chars();
+    let first = chars.next()?;
+    (first.is_ascii_alphabetic()
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.')))
+    .then_some(scheme)
+}
+
 impl AtpUri {
     #[cfg(test)]
     pub(crate) fn for_test(host: &str, port: u16, path: &str, query: Option<&str>) -> Self {
@@ -214,6 +236,7 @@ impl AtpUri {
     /// - Absolute path (`/foo`) → same host:port, new path
     /// - Relative path (`bar`) → resolve against current path's directory
     pub fn resolve(&self, relative: &str) -> Result<AtpUri, ProtocolError> {
+        // (see `foreign_scheme` below for why a scheme check comes first)
         if relative.len() > MAX_URI_LEN {
             return Err(ProtocolError::invalid_uri(format_args!(
                 "URI exceeds maximum length of {MAX_URI_LEN}"
@@ -228,6 +251,20 @@ impl AtpUri {
         // If it's an absolute URI, just parse it
         if relative.starts_with("atp://") {
             return AtpUri::parse(relative);
+        }
+
+        // Any other scheme is an absolute URI this protocol cannot follow, and
+        // must not be mistaken for a path. Without this an `https://example.com`
+        // href resolved as a *relative* reference and became
+        // `atp://current-host/https://example.com`: a nonsensical request, and
+        // one that tells the current site which external link was clicked.
+        //
+        // The scheme is named in the error so a caller can say which protocol it
+        // refused rather than reporting a generic failure.
+        if let Some(scheme) = foreign_scheme(relative) {
+            return Err(ProtocolError::invalid_uri(format_args!(
+                "unsupported protocol: {scheme}"
+            )));
         }
 
         // Split off query string from the href
@@ -489,6 +526,45 @@ mod tests {
     fn parse_deep_path() {
         let uri = AtpUri::parse("atp://example.com/a/b/c").unwrap();
         assert_eq!(uri.path, "/a/b/c");
+    }
+
+    /// An absolute URI in another protocol must be refused, not resolved as a
+    /// relative path. Resolving it produced a request to the current host with
+    /// the foreign URI as its path.
+    #[test]
+    fn resolve_refuses_other_protocols_rather_than_treating_them_as_paths() {
+        let base = AtpUri::parse("atp://news.dustnet.io/index.aml").unwrap();
+        for href in [
+            "https://example.com/article",
+            "http://example.com",
+            "mailto:rob@dustnet.io",
+            "file:///etc/passwd",
+        ] {
+            let error = base
+                .resolve(href)
+                .expect_err(&format!("resolved {href} instead of refusing it"));
+            let message = format!("{error}");
+            assert!(
+                message.contains("unsupported protocol"),
+                "{href}: {message}"
+            );
+        }
+    }
+
+    /// A path that merely contains a colon is still a path.
+    #[test]
+    fn resolve_still_accepts_ordinary_relative_references() {
+        let base = AtpUri::parse("atp://news.dustnet.io/index.aml").unwrap();
+        for href in [
+            "about.aml",
+            "/index?item=1",
+            "sub/page.aml",
+            "?item=2",
+            // A colon after a slash is part of a path, not a scheme.
+            "sub/odd:name.aml",
+        ] {
+            assert!(base.resolve(href).is_ok(), "refused {href}");
+        }
     }
 
     #[test]
