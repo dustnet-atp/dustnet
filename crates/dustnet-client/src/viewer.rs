@@ -1337,6 +1337,22 @@ impl ViewerModel {
                         "history entry exceeds the retained AML limit".into(),
                     );
                 }
+                // Where the page says it is, which is not always where it was
+                // asked for: a submission is answered with the page its handler
+                // chose, so logging in at `/login` returns the front page. The
+                // history entry below already records `uri`; `current_uri` is
+                // what reload, relative links and session scoping read, so it
+                // has to agree or a reload would resubmit the form.
+                if self.current_uri.as_ref() != Some(&uri) {
+                    let Ok(relabelled) = uri.try_clone() else {
+                        return self.fail_owned_operation(
+                            owner.scope,
+                            owner.request_id,
+                            "location relabelling allocation rejected".into(),
+                        );
+                    };
+                    self.current_uri = Some(relabelled);
+                }
                 let replaceable = matches!(self.history_commit, HistoryCommit::ReplaceCurrent)
                     .then(|| self.history_position)
                     .flatten()
@@ -1969,6 +1985,32 @@ mod tests {
             _ => panic!("expected exact history admission"),
         };
         model.reduce(ViewerEvent::HistoryCommitted { owner, id })
+    }
+
+    /// A page that names a different location moves the viewer there, not just
+    /// its history entry. `current_uri` is what a reload, a relative link and
+    /// session scoping all read — relabelling only the history entry would
+    /// leave a reload after a login resubmitting the login form.
+    #[test]
+    fn a_page_that_names_another_location_moves_the_viewer_there() {
+        let mut model = ViewerModel::new(80, 24);
+        let (login_uri, origin) = target("atp://one.example/login");
+        let effects = model.reduce(ViewerEvent::Navigate {
+            uri: login_uri,
+            origin,
+        });
+        let owner = match &effects[0] {
+            ViewerEffect::Connect { owner } => owner.clone(),
+            other => panic!("expected connect, got {other:?}"),
+        };
+        assert_eq!(model.current_uri().unwrap().path(), "/login");
+
+        let (index_uri, _) = target("atp://one.example/index");
+        admit_history(&mut model, owner, index_uri, "[page][/page]".into());
+
+        assert_eq!(model.current_uri().unwrap().path(), "/index");
+        let position = model.history_position.expect("a committed entry");
+        assert_eq!(model.history.get(position).unwrap().uri.path(), "/index");
     }
 
     #[test]

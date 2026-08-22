@@ -2863,8 +2863,16 @@ fn help_modal_stays_within_a_small_viewport() {
 #[test]
 fn render_sessions_page_empty() {
     let store = crate::session::SessionStore::new();
-    let aml = render_sessions_page(&store);
+    let aml = render_sessions_page(&store, false);
     assert!(aml.contains("No active sessions"));
+    assert!(aml.contains("Held in memory only"));
+}
+
+#[test]
+fn render_sessions_page_names_whether_sessions_are_remembered() {
+    let store = crate::session::SessionStore::new();
+    assert!(render_sessions_page(&store, true).contains("Remembered across launches"));
+    assert!(render_sessions_page(&store, false).contains("Held in memory only"));
 }
 
 #[test]
@@ -2884,7 +2892,7 @@ fn render_sessions_page_with_sessions() {
             expires: None,
         },
     );
-    let aml = render_sessions_page(&store);
+    let aml = render_sessions_page(&store, false);
     assert!(aml.contains("verified-tls|example.com:1985"));
     assert!(aml.contains("no expiry"));
     assert!(aml.contains("1 session(s)"));

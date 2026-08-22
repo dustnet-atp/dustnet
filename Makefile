@@ -6,7 +6,7 @@ SHELL := /bin/bash
 SITE_DIR ?=
 SITE_BUILD := target/site
 
-.PHONY: ci ci-preflight ci-publish-dryrun install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
+.PHONY: ci ci-preflight ci-publish-dryrun install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
 
 # ─── Local verification gate ─────────────────────────────────
 #
@@ -16,9 +16,24 @@ SITE_BUILD := target/site
 # actually enforced. A local gate that runs is worth more than a hosted
 # one that does not.
 #
-#   make test      fast inner loop — use while working
-#   make ci        the full gate — run before every commit
-#   make ci-full   ci plus Miri, ASan, and a fuzz smoke run (slow)
+#   make test      fast inner loop — use while working          (~10s)
+#   make ci        the full gate — run before every commit       (minutes)
+#   make ci-full   ci plus Miri, ASan and the fuzz campaign      (~an hour)
+#
+# `make test` runs the `quick` nextest profile, which omits the three
+# wall-clock deadline tests that are 20.3s of a 22.5s suite; the omission is
+# named and argued in .config/nextest.toml. `make ci` runs the default profile
+# and omits nothing, so the deadline tests are still gated before every commit
+# rather than only before a release.
+#
+# `fuzz-campaign` is the reason ci-full is an hour: eight targets at
+# FUZZ_SECONDS each, 40 minutes at the default 300. It lives in ci-full and
+# nowhere else, and that placement is load-bearing. It used to live in no tier
+# at all while `allocation-audit` — a prerequisite of both `ci` and `test` —
+# required its output, so both the gate and the inner loop were unpassable
+# after any edit under crates/ until an undocumented 40-minute command had been
+# run. That is how 0.2.0-alpha.3 was tagged with a red gate. The requirement is
+# now `--check-campaign`, asked for here and only here.
 #
 # Host triple is resolved rather than hardcoded so ASan works on both
 # Apple Silicon and Intel macs.
@@ -38,7 +53,13 @@ CARGO_TOOLS := nextest audit deny vet fuzz
 ci: ci-preflight ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps install-check
 	@echo "── ci: all gates passed ──"
 
-ci-full: ci ci-fuzz-smoke ci-miri ci-asan
+# Order matters: fuzz-campaign-check runs *after* fuzz-campaign, so it does not
+# merely restate what the campaign just wrote. What it catches is an edit to
+# crates/ that landed while the campaign was running — the campaign fingerprints
+# the tree once at the start, so a mid-run commit leaves rows that were already
+# stale when they were written. That is not hypothetical; it is why this target
+# has two steps instead of one.
+ci-full: ci ci-fuzz-smoke ci-miri ci-asan fuzz-campaign fuzz-campaign-check
 	@echo "── ci-full: all gates passed, including Miri/ASan/fuzz ──"
 
 # Everything `make ci-full` needs that is not cargo itself. Fails naming what
@@ -114,9 +135,12 @@ ci-boundaries:
 	@$(MISE) ! cargo tree -p dustnet-server | grep -q unsupported-social
 	@$(MISE) ! cargo tree -p dustnet-core | grep -Eq 'dustnet-(client|server)'
 
+# Default profile, explicitly named: the gate is the one place nothing is
+# filtered, and naming it here means a change to the profile default cannot
+# quietly narrow what `make ci` runs.
 ci-tests: fuzz-check
 	@echo "── workspace tests ──"
-	$(MISE) cargo nextest run --workspace --all-features -j 4
+	$(MISE) cargo nextest run --profile default --workspace --all-features -j 4
 
 # The excluded helper crates: neither is in the workspace, so a plain
 # `cargo test` never compiles them and they rot silently.
@@ -324,12 +348,31 @@ ci-asan:
 	$(MISE) RUSTFLAGS=-Zsanitizer=address RUSTDOCFLAGS=-Zsanitizer=address \
 		cargo +$(NIGHTLY) test -p dustnet-client --lib -Zbuild-std --target $(HOST_TRIPLE)
 
+# nextest rather than `cargo test` so the inner loop reuses the same test
+# binaries the gate builds instead of rebuilding them under a second harness.
+# The cost is doctests, which nextest cannot run; `ci-docs` owns those.
+#
+# -j 8 rather than the gate's 4, on 8 performance cores. The gate stays at 4
+# because its extra tests are the wall-clock ones: signal_shutdown.rs already
+# allows 15s for a debug binary to reach its listener "while the all-workspace
+# checkpoint is also running CPU-heavy TLS/server tests", so loading the
+# machine harder is how that assertion gets flaky. The quick profile omits
+# every test with a wall-clock assertion in it, so it has no such deadline to
+# miss and can use the cores.
 test: fuzz-check site-builder-check allocation-audit
-	eval "$$(mise activate bash)" && cargo test
+	$(MISE) cargo nextest run --profile quick --workspace --all-features -j 8
 
 allocation-audit:
 	eval "$$(mise activate bash)" && cargo fmt --manifest-path tools/allocation-audit/Cargo.toml -- --check
 	eval "$$(mise activate bash)" && cargo run --quiet --manifest-path tools/allocation-audit/Cargo.toml -- --check
+
+# Deliberately not a prerequisite of `test` or `ci`: satisfying it costs a
+# 40-minute campaign, and a gate documented as "run before every commit" cannot
+# ask for that. Reached through ci-full, or run by hand after a campaign.
+fuzz-campaign-check:
+	@echo "── fuzz campaign coverage ──"
+	$(MISE) cargo run --quiet --manifest-path tools/allocation-audit/Cargo.toml -- --check-campaign
+	@echo "  every fuzz target has a row for the code now in the tree"
 
 site-builder-check:
 	eval "$$(mise activate bash)" && cargo test --manifest-path tools/prerender-figlet/Cargo.toml

@@ -92,7 +92,7 @@
     },
     {
       "name": "Redirect",
-      "description": "an attempt to move a session across an origin or security context without the user's knowledge.",
+      "description": "an attempt to move a session across an origin or security context without the user's knowledge, whether by a REDIRECT target or by a PAGE naming a path it is not entitled to.",
       "coverage": [
         {
           "property": "origin isolation",
@@ -103,6 +103,16 @@
           "property": "origin isolation",
           "control": "Link and URI Attacks",
           "evidence": "rejects_http_scheme"
+        },
+        {
+          "property": "origin isolation",
+          "control": "Link and URI Attacks",
+          "evidence": "a_page_path_must_be_absolute_and_bounded"
+        },
+        {
+          "property": "origin isolation",
+          "control": "Link and URI Attacks",
+          "evidence": "an_unusable_page_path_leaves_the_location_alone"
         }
       ]
     },
@@ -187,6 +197,21 @@
           "property": "local confidentiality",
           "control": "Information Leakage",
           "evidence": "directives_reject_non_absolute_or_traversing_scopes"
+        },
+        {
+          "property": "local confidentiality",
+          "control": "Session Security",
+          "evidence": "a_session_store_other_users_can_read_is_refused"
+        },
+        {
+          "property": "local confidentiality",
+          "control": "Session Security",
+          "evidence": "a_written_session_store_is_owner_only"
+        },
+        {
+          "property": "origin isolation",
+          "control": "Session Security",
+          "evidence": "only_ca_verified_sessions_are_written_to_disk"
         }
       ]
     },
@@ -244,6 +269,21 @@
           "property": "origin isolation",
           "control": "Session Security",
           "evidence": "an_unrecognised_token_is_anonymous"
+        },
+        {
+          "property": "credential containment",
+          "control": "Session Security",
+          "evidence": "a_persisted_session_needs_an_expiry_to_reach_the_disk"
+        },
+        {
+          "property": "credential containment",
+          "control": "Session Security",
+          "evidence": "clearing_a_session_removes_it_from_the_disk"
+        },
+        {
+          "property": "bounded resource use",
+          "control": "Session Security",
+          "evidence": "a_session_file_is_admitted_under_the_same_bounds_as_a_server"
         }
       ]
     },

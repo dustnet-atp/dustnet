@@ -468,6 +468,23 @@ pub(crate) struct FetchResult {
     pub final_uri: AtpUri,
 }
 
+/// Where a PAGE says it is, or the URI it was fetched from.
+///
+/// A PAGE may name its own path, because the answer to a submission is often a
+/// different page from the one submitted to: a login is answered with the front
+/// page, and without this the client would keep `/login` as its location and
+/// put the person back on the form the moment they reloaded.
+///
+/// Resolved against the URI that produced it, so it can only ever relabel the
+/// location within the same origin — moving between sites is what `REDIRECT` is
+/// for, and that path performs a fresh HELLO and counts against the redirect
+/// limit. A `Path` that does not resolve is *ignored*, not fatal: the page
+/// itself is intact, and refusing to display it because its label was malformed
+/// would be a worse answer than showing it where it was fetched from.
+fn page_location(base: &AtpUri, page: &PageMessage) -> Option<AtpUri> {
+    base.resolve(page.path.as_deref()?).ok()
+}
+
 /// A redirect completion tagged with the operation that received it.
 ///
 /// Redirects are deliberately returned to the viewer instead of being
@@ -1084,6 +1101,28 @@ impl AtpClient {
         }
     }
 
+    /// Let this client's CA-verified sessions outlive the process.
+    ///
+    /// A builder step rather than a constructor argument so that every caller
+    /// that does not ask for it — which is every test — keeps sessions in
+    /// memory. Remembering is the default the *user* gets, decided once in
+    /// [`crate::compositor`]'s viewer setup from configuration; it is
+    /// deliberately not the default a *construction site* gets, so a new one
+    /// cannot acquire a credential file by saying nothing.
+    ///
+    /// Returns how many stored sessions were restored, or the error that
+    /// prevented reading them. The error is advisory: the client is usable
+    /// either way, having simply started logged out.
+    pub(crate) fn remembering_sessions(
+        mut self,
+        file: crate::session_file::SessionFile,
+    ) -> (Self, Result<usize, crate::session_file::SessionFileError>) {
+        let (sessions, outcome) =
+            GovernedSessionStore::with_persistence(self.governor.clone(), file);
+        self.sessions = sessions;
+        (self, outcome)
+    }
+
     /// Pin a peer the user has chosen to trust.
     ///
     /// Separate from the trust-on-first-use path in `ensure_connected_to`,
@@ -1303,6 +1342,18 @@ impl AtpClient {
         self.sessions.clear_all();
     }
 
+    /// Whether sessions are being remembered across launches, for `:sessions`.
+    pub(crate) fn sessions_are_persistent(&self) -> bool {
+        self.sessions.is_persistent()
+    }
+
+    /// The most recent session-store write failure, cleared by reading it.
+    pub(crate) fn take_session_persistence_error(
+        &mut self,
+    ) -> Option<crate::session_file::SessionFileError> {
+        self.sessions.take_persistence_error()
+    }
+
     /// Fetch exactly one page response using an identity issued by the viewer.
     ///
     /// This API never creates a scope or request ID and never follows a
@@ -1375,9 +1426,12 @@ impl AtpClient {
                     .scope
                     .try_clone()
                     .map_err(|_| current_owner_error(owner.scope.origin.host_capacity()))?;
-                let final_uri = uri
-                    .try_clone()
-                    .map_err(|_| current_owner_error(uri.path().len()))?;
+                let final_uri = match page_location(uri, &page) {
+                    Some(named) => named,
+                    None => uri
+                        .try_clone()
+                        .map_err(|_| current_owner_error(uri.path().len()))?,
+                };
                 self.apply_session_directives(&prepared.target, &page);
                 Ok(NavigationResponse::Page(FetchResult {
                     scope,
@@ -1626,11 +1680,12 @@ impl AtpClient {
             MessageType::Page => {
                 let page = PageMessage::decode_body(&response.body, response.flags)?;
                 self.apply_session_directives(&prepared.target, &page);
+                let final_uri = page_location(&submit_uri, &page).unwrap_or(submit_uri);
                 Ok(NavigationResponse::Page(FetchResult {
                     scope: owner.scope,
                     request_id: owner.request_id,
                     aml_content: page.content,
-                    final_uri: submit_uri,
+                    final_uri,
                 }))
             }
             MessageType::Redirect => {
@@ -2915,6 +2970,114 @@ mod tests {
         assert_eq!(page.final_uri.path(), "/submit");
         CANONICAL_ORIGIN_ATTEMPTS.with(|attempts| assert_eq!(attempts.get(), 1));
         server.await.unwrap();
+    }
+
+    /// A submission answered with a page that names itself lands the client on
+    /// that page. This is the whole point of the field: without it the location
+    /// stays at the form's action and a reload resubmits.
+    #[tokio::test]
+    async fn a_named_page_relabels_where_a_submission_landed() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut peer = RawPeer::accept(&listener).await;
+            assert_eq!(
+                peer.recv_frame().await.unwrap().msg_type,
+                MessageType::Hello
+            );
+            peer.send_frame(&RawFrame {
+                msg_type: MessageType::Welcome,
+                flags: 0,
+                body: b"WELCOME/0.2\nCapabilities: page-path\n".to_vec(),
+            })
+            .await
+            .unwrap();
+            assert_eq!(
+                peer.recv_frame().await.unwrap().msg_type,
+                MessageType::Input
+            );
+            peer.send_frame(&RawFrame {
+                msg_type: MessageType::Page,
+                flags: 0x04,
+                body: b"Path: /index?item=12\n\n[page][text]posted[/text][/page]".to_vec(),
+            })
+            .await
+            .unwrap();
+        });
+
+        let uri = AtpUri::parse(&format!("atp://127.0.0.1:{}/login", address.port())).unwrap();
+        let mut client = AtpClient::new(TlsPolicy::plaintext_loopback());
+        let owner = OperationOwner::new(
+            PageScope {
+                origin: client.origin_for(&uri).unwrap(),
+                generation: 93,
+            },
+            409,
+        );
+        let response = client
+            .submit(owner, &uri, "/login", "name=dusty")
+            .await
+            .unwrap();
+        let NavigationResponse::Page(page) = response else {
+            panic!("expected PAGE response");
+        };
+        assert_eq!(page.final_uri.path(), "/index");
+        assert_eq!(page.final_uri.query(), Some("item=12"));
+        assert_eq!(page.final_uri.host(), "127.0.0.1");
+        server.await.unwrap();
+    }
+
+    /// A `Path` names a path on the site that sent it. One that does not parse
+    /// as such is ignored, not fatal — the page is intact, and refusing to show
+    /// it because its label was malformed is the worse answer.
+    #[tokio::test]
+    async fn an_unusable_page_path_leaves_the_location_alone() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut peer = RawPeer::accept(&listener).await;
+            assert_eq!(
+                peer.recv_frame().await.unwrap().msg_type,
+                MessageType::Hello
+            );
+            peer.send_frame(&RawFrame {
+                msg_type: MessageType::Welcome,
+                flags: 0,
+                body: b"WELCOME/0.2\nCapabilities: page-path\n".to_vec(),
+            })
+            .await
+            .unwrap();
+            assert_eq!(
+                peer.recv_frame().await.unwrap().msg_type,
+                MessageType::Input
+            );
+            // `//elsewhere` would resolve to another host if it were treated as
+            // a URI reference. The decoder refuses it before it gets that far,
+            // so the frame is rejected outright rather than followed.
+            peer.send_frame(&RawFrame {
+                msg_type: MessageType::Page,
+                flags: 0x04,
+                body: b"Path: //elsewhere.example/x\n\n[page][/page]".to_vec(),
+            })
+            .await
+            .unwrap();
+        });
+
+        let uri = AtpUri::parse(&format!("atp://127.0.0.1:{}/login", address.port())).unwrap();
+        let mut client = AtpClient::new(TlsPolicy::plaintext_loopback());
+        let owner = OperationOwner::new(
+            PageScope {
+                origin: client.origin_for(&uri).unwrap(),
+                generation: 94,
+            },
+            410,
+        );
+        let result = client.submit(owner, &uri, "/login", "name=dusty").await;
+        assert!(
+            result.is_err(),
+            "a cross-origin Path must not be accepted as a location"
+        );
+        let _ = server.await;
     }
 
     #[tokio::test]

@@ -795,6 +795,7 @@ async fn serve_get(
         get.query.as_deref(),
         identity.as_deref(),
         Vec::new(),
+        false,
     )
     .await
 }
@@ -825,6 +826,10 @@ async fn serve_path(
     query: Option<&str>,
     identity: Option<&str>,
     session_directives: Vec<dustnet_core::session::SessionDirective>,
+    // Whether the PAGE should name the path it is. Set for a submission, whose
+    // answer is often a different page from the one submitted to, and unset for
+    // a GET, where the client already knows.
+    announce_location: bool,
 ) -> Result<(), ProtocolError> {
     let path = resolve_path(root, request_path).await?;
     let limit = if path
@@ -900,6 +905,13 @@ async fn serve_path(
         };
 
         let has_live_regions = content.contains("[live");
+        // Asked of the stream, not assumed: attaching a `Path` a client never
+        // negotiated makes the frame unsendable, so an older client would get
+        // no page at all instead of the page it has always got.
+        let announced = (announce_location && stream.supports_page_path()).then(|| match query {
+            Some(query) => format!("{request_path}?{query}"),
+            None => request_path.to_string(),
+        });
         let page = PageMessage {
             content,
             flags: PageFlags {
@@ -907,6 +919,7 @@ async fn serve_path(
                 has_live_regions,
                 ..PageFlags::default()
             },
+            path: announced,
             session_directives,
         };
         let (body, flags) = page.encode_body()?;
@@ -927,11 +940,17 @@ async fn serve_path(
 /// Without a handler this is the 405 it always was, so a server that installs
 /// none behaves exactly as it did before submissions were possible.
 ///
-/// An accepted submission answers with a REDIRECT rather than a page. The
-/// client then GETs the target, which renders through the include resolver, so
-/// there is one path that generates a page whether or not a submission
-/// preceded it — and the person who submitted ends up on a URL they can reload
-/// without submitting again.
+/// An accepted submission answers with the target *page*, not a redirect: a
+/// REDIRECT may carry no metadata, so it cannot also issue the session a login
+/// grants, and it would cost a second round trip. The page is rendered through
+/// the same `serve_path` a GET uses, so there is one path that generates a page
+/// whether or not a submission preceded it.
+///
+/// Because the answer may be a different page from the one submitted to, it
+/// names itself: the PAGE carries a `Path`, and the client adopts it as its
+/// location. That is what makes a login land on the front page rather than
+/// leaving the person on `/login` with the front page drawn on it, one reload
+/// away from the form they just completed.
 async fn serve_input(
     stream: &mut AtpServerStream,
     site: ConnectionContext<'_>,
@@ -977,12 +996,18 @@ async fn serve_input(
             {
                 resolver.revoke(token);
             }
-            // The identity that answered the request is the one the *response*
-            // is rendered for — except where the handler just changed it, in
-            // which case a fresh GET follows and resolves the new token. That
-            // is why the response after a login shows the logged-out nav for
-            // one page; the alternative is trusting a handler's word about who
-            // it just authenticated.
+            // The response is rendered for whoever holds the session *after*
+            // the handler ran, not before it. Where a handler granted one, the
+            // token it issued is resolved through the same `SessionResolver` a
+            // GET would use — so a login answers with the logged-in page
+            // instead of showing the logged-out nav for one page, and it does
+            // so without taking the handler's word about who it authenticated:
+            // the resolver is still the only thing that turns a token into a
+            // name, and it refuses one that is unknown, expired or revoked.
+            let identity = match (site.session_resolver, session.token()) {
+                (Some(resolver), Some(granted)) => resolver.identity(granted),
+                _ => identity,
+            };
             serve_path(
                 stream,
                 site.root,
@@ -991,6 +1016,7 @@ async fn serve_input(
                 query.as_deref(),
                 identity.as_deref(),
                 session.into_directives(),
+                true,
             )
             .await
         }
@@ -2289,6 +2315,17 @@ mod tests {
         }
     }
 
+    /// A HELLO that offers both `sessions` and `page-path`, as the reference
+    /// client does — the pair a login response needs, since it both issues a
+    /// session and names the page it landed on.
+    fn hello_frame_with_sessions_and_page_path() -> RawFrame {
+        RawFrame {
+            msg_type: MessageType::Hello,
+            flags: 0,
+            body: b"HELLO/0.2\nCapabilities: sessions,page-path\n".to_vec(),
+        }
+    }
+
     /// A HELLO that offers the `sessions` capability.
     ///
     /// Needed by any test whose frames carry a session: the transport gates
@@ -3220,6 +3257,359 @@ mod tests {
         assert_eq!(response.flags & 0x08, 0x08, "session flag should be set");
         let body = String::from_utf8(response.body).unwrap();
         assert!(body.contains("Set-Session: issued-token"), "{body}");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// The page answering a login is rendered for the identity the login just
+    /// granted, not the anonymous one that asked for it. Without this the
+    /// response carries `Set-Session` and a logged-out nav bar in the same
+    /// frame, which reads to the person who just typed their password as a
+    /// login that did not work.
+    #[tokio::test]
+    async fn a_granted_session_renders_the_response_for_its_new_identity() {
+        struct Sessions;
+        impl crate::session::SessionResolver for Sessions {
+            fn identity(&self, token: &str) -> Option<String> {
+                (token == "issued-token").then(|| "dusty".to_string())
+            }
+        }
+
+        struct Authenticates;
+        impl crate::input::InputHandler for Authenticates {
+            fn handle(
+                &self,
+                request: &crate::input::InputRequest<'_>,
+            ) -> crate::input::InputOutcome {
+                // The submission itself is anonymous: nobody presents a token
+                // when logging in. This is what makes the assertion below a
+                // real one.
+                assert_eq!(request.identity, None);
+                crate::input::InputOutcome::render("/index").with_session(
+                    crate::session::SessionChange::set("issued-token", "/", 1_900_000_000),
+                )
+            }
+        }
+
+        struct Nav;
+        impl crate::include::IncludeResolver for Nav {
+            fn resolve(
+                &self,
+                _name: &str,
+                request: &crate::include::IncludeRequest<'_>,
+            ) -> Option<Vec<dustnet_core::scanner::Token>> {
+                Some(vec![dustnet_core::scanner::Token::Text(
+                    request.identity.unwrap_or("login").to_string(),
+                )])
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("index.aml"),
+            r#"[page mode=document][include name="header" /][/page]"#,
+        )
+        .unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_include_resolver(Arc::new(Nav))
+        .with_input_handler(Arc::new(Authenticates))
+        .with_session_resolver(Arc::new(Sessions));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame_with_sessions()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /login\nForm: name=dusty&password=hunter2\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.contains("Set-Session: issued-token"), "{body}");
+        assert!(
+            body.contains("dusty"),
+            "the login response should be rendered as dusty: {body}"
+        );
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// A token the resolver does not recognise is anonymous even when a handler
+    /// is the thing that issued it. The resolver stays the only authority on
+    /// who a token belongs to — a handler cannot render a page as someone by
+    /// claiming to have granted them a session.
+    #[tokio::test]
+    async fn a_granted_token_the_resolver_rejects_renders_anonymously() {
+        struct RefusesEverything;
+        impl crate::session::SessionResolver for RefusesEverything {
+            fn identity(&self, _token: &str) -> Option<String> {
+                None
+            }
+        }
+
+        struct Claims;
+        impl crate::input::InputHandler for Claims {
+            fn handle(&self, _: &crate::input::InputRequest<'_>) -> crate::input::InputOutcome {
+                crate::input::InputOutcome::render("/index").with_session(
+                    crate::session::SessionChange::set("forged", "/", 1_900_000_000),
+                )
+            }
+        }
+
+        struct Nav;
+        impl crate::include::IncludeResolver for Nav {
+            fn resolve(
+                &self,
+                _name: &str,
+                request: &crate::include::IncludeRequest<'_>,
+            ) -> Option<Vec<dustnet_core::scanner::Token>> {
+                Some(vec![dustnet_core::scanner::Token::Text(
+                    request.identity.unwrap_or("anonymous").to_string(),
+                )])
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("index.aml"),
+            r#"[page mode=document][include name="header" /][/page]"#,
+        )
+        .unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_include_resolver(Arc::new(Nav))
+        .with_input_handler(Arc::new(Claims))
+        .with_session_resolver(Arc::new(RefusesEverything));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame_with_sessions()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /login\nForm: name=dusty\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.contains("anonymous"), "{body}");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// A submission's answer names the page it actually is. Without this the
+    /// client keeps the path it submitted to as its location, so a login shows
+    /// the front page but reloads back into the login form.
+    #[tokio::test]
+    async fn an_accepted_submission_names_the_page_it_answers_with() {
+        struct SendsElsewhere;
+        impl crate::input::InputHandler for SendsElsewhere {
+            fn handle(&self, _: &crate::input::InputRequest<'_>) -> crate::input::InputOutcome {
+                crate::input::InputOutcome::render("/index")
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), "[page][/page]").unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_input_handler(Arc::new(SendsElsewhere));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame_with_sessions_and_page_path()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /login\nForm: name=dusty\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        assert_eq!(response.flags & 0x04, 0x04, "path flag should be set");
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.starts_with("Path: /index\n"), "{body}");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// A submission's answer carries the query too. A comment posted on a story
+    /// is answered with that story, and a location that dropped the `item`
+    /// would reload as the front page.
+    #[tokio::test]
+    async fn a_named_page_keeps_its_query() {
+        struct SendsToAStory;
+        impl crate::input::InputHandler for SendsToAStory {
+            fn handle(&self, _: &crate::input::InputRequest<'_>) -> crate::input::InputOutcome {
+                crate::input::InputOutcome::render_query("/index", "item=12")
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), "[page][/page]").unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_input_handler(Arc::new(SendsToAStory));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame_with_sessions_and_page_path()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /index\nForm: text=hello\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.starts_with("Path: /index?item=12\n"), "{body}");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// A client that never offered `page-path` still gets its page. The
+    /// capability gate refuses a frame needing a capability the peer did not
+    /// negotiate, so a server that attached the field regardless would answer
+    /// an older client with nothing at all.
+    #[tokio::test]
+    async fn a_client_without_the_capability_gets_an_unnamed_page() {
+        struct SendsElsewhere;
+        impl crate::input::InputHandler for SendsElsewhere {
+            fn handle(&self, _: &crate::input::InputRequest<'_>) -> crate::input::InputOutcome {
+                crate::input::InputOutcome::render("/index")
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), "[page][/page]").unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap()
+        .with_input_handler(Arc::new(SendsElsewhere));
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Input,
+                flags: 0,
+                body: b"INPUT /login\nForm: name=dusty\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        assert_eq!(response.flags & 0x04, 0, "path flag must not be set");
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(!body.contains("Path: "), "{body}");
+        assert!(body.starts_with("[page]"), "{body}");
+
+        drop(client);
+        shutdown.send(true).unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// A GET is answered without a `Path`. The client asked for that path and
+    /// already knows it; spending the bytes on every page to say so again would
+    /// be a field that only ever repeats the request.
+    #[tokio::test]
+    async fn a_get_is_not_named() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.aml"), "[page][/page]").unwrap();
+        let config = StaticServerConfig::bind_plaintext_loopback(
+            directory.path().to_path_buf(),
+            "127.0.0.1",
+            0,
+        )
+        .await
+        .unwrap();
+        let address = config.local_addr().unwrap();
+        let mut server = StaticServer::new(config);
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(async move { server.run().await });
+
+        let mut client = RawClient::connect(address).await;
+        client.send(hello_frame_with_sessions_and_page_path()).await;
+        assert_eq!(client.receive().await.msg_type, MessageType::Welcome);
+        client
+            .send(RawFrame {
+                msg_type: MessageType::Get,
+                flags: 0,
+                body: b"GET /index.aml\n".to_vec(),
+            })
+            .await;
+
+        let response = client.receive().await;
+        assert_eq!(response.msg_type, MessageType::Page);
+        assert_eq!(response.flags & 0x04, 0, "a GET needs no Path");
 
         drop(client);
         shutdown.send(true).unwrap();

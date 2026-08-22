@@ -186,6 +186,7 @@ origin comparison at all.
 - The client displays the target URI before navigation (in a status bar or on focus)
 - URI length limit: 2,048 characters
 - Hostnames are canonicalized to lowercase; malformed authorities, unbracketed IPv6 literals, controls, fragments, and invalid ports are rejected
+- A PAGE's `Path` may relabel the location only within the origin that sent it. It is a path, not a URI: a value carrying a scheme, beginning `//`, or containing a fragment is a malformed body, so a page cannot use the field to move the client to another site. Moving between sites remains REDIRECT's job, which the client counts against the redirect limit and, across origins, performs with a fresh connection and HELLO. A `Path` that cannot be used is ignored rather than fatal, so a malformed one cannot suppress a page either.
 
 ## Server-Side Security
 
@@ -313,7 +314,40 @@ but a client that ignores it must still be refused.
   session record, so the token stops being valid even if the client ignores
   the directive.
 - **CSPRNG tokens.** Session tokens are 32 bytes of cryptographic randomness (via `getrandom`), hex-encoded. They cannot be predicted, enumerated, or derived from user information.
-- **Ephemeral client storage.** Client-side tokens are held only in process memory and disappear when the client exits. The `:sessions` inventory displays scopes and expiry without exposing token values.
+- **No token values exposed locally.** The `:sessions` inventory displays
+  scopes and expiry without ever showing a token, and names whether sessions
+  are being remembered so that whether closing the client is a logout is not
+  something the user has to infer.
+- **Persistence narrowed at rest.** A CA-verified session outlives the process
+  by default, written to `$XDG_STATE_HOME/dustnet/sessions`;
+  `remember-sessions = false` in `client.conf` restores memory-only sessions.
+  This is the one place the client keeps a credential at rest, and it is worth
+  being explicit about the trade: a stored token is a token an attacker with
+  read access to the user's account can take, which the ephemeral-only client
+  did not offer. What is stored in exchange is the site's own revocable,
+  expiring, path-scoped token and never a password, and the alternative cost —
+  re-authenticating on every launch — is paid continuously by every user while
+  appearing in no threat model. Persistence cannot widen what a token reaches;
+  it narrows what is eligible to be stored at all:
+  - Only `verified-tls` origins are written. A `--tofu`, `--insecure` or
+    plaintext session stays in memory and dies with the process. The file
+    therefore carries no security label — there is no field to alter that
+    would promote a stored token into a stronger origin partition, because
+    every line is read back at the one level that was allowed to be written.
+  - Only tokens carrying an expiry are written, and an expired line is
+    discarded on load rather than sent. A token with no expiry is a
+    credential with no end, and the file is not the place to keep one.
+  - The file is created owner-only (`0600`) and refused on load when other
+    users can read it. A pin is only worth the integrity of the file holding
+    it; a session token is only worth its confidentiality, so the check runs
+    in the other direction from the pin store's.
+  - Loading admits through the same path a server directive does, so the
+    per-site and total bounds and the client's memory accounting apply to a
+    file exactly as they apply to a live response.
+  - A failed write leaves the session working in memory: unlike a pin, a
+    session that does not persist is an inconvenience rather than a false
+    claim about who the peer is. A failed *clear* is the opposite, and removes
+    the file outright — a logout must not leave the token at rest.
 - **Bounded storage.** Maximum 8 sessions per site, 256 total. Maximum token length 4,096 characters. These limits prevent a malicious site from flooding the client's session store.
 - **TLS-only transport.** Session tokens travel over TLS 1.3 and are never sent in plaintext. The client refuses to attach session tokens to requests over plaintext connections, even in development mode. This is enforced structurally — the session lookup returns no token when the connection is unencrypted.
 
@@ -381,7 +415,11 @@ For client implementations:
 - Session tokens are never sent cross-site
 - Session tokens are never sent over plaintext connections
 - Session scopes are absolute, traversal-free paths and match complete path segments
-- Session storage limits enforced (8 per site, 256 total)
+- Session storage limits enforced (8 per site, 256 total), on a loaded session file as well as on a server directive
+- `remember-sessions = false` keeps sessions in memory for the whole run and
+  writes nothing
+- Only CA-verified origins are ever persisted, and only with an expiry
+- The session store is created owner-only and refused when it is readable by other users
 - Custom transition data is validated against limits
 - Live region update bodies, queued updates, and active subscriptions are bounded
 - Memory bounded: page content, animation frames, live buffers all capped

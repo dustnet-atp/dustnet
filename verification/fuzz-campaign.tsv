@@ -20,3 +20,11 @@ version	target	seconds	executions	execs_per_sec	crashes	host	toolchain	code
 0.2.0-alpha.2	fuzz_protocol_state	120	2395699	19799	0	aarch64-apple-darwin	rustc 1.96.0-nightly	01c6f41e24f88f27
 0.2.0-alpha.2	fuzz_viewer_state	120	1070978	8851	0	aarch64-apple-darwin	rustc 1.96.0-nightly	01c6f41e24f88f27
 0.2.0-alpha.2	fuzz_uri	120	16673315	137795	0	aarch64-apple-darwin	rustc 1.96.0-nightly	01c6f41e24f88f27
+0.2.0-alpha.3	fuzz_scanner	300	7530124	25017	0	aarch64-apple-darwin	rustc 1.96.0-nightly	31e098ec63d1e004
+0.2.0-alpha.3	fuzz_parser	300	156555	520	0	aarch64-apple-darwin	rustc 1.96.0-nightly	31e098ec63d1e004
+0.2.0-alpha.3	fuzz_pipeline	300	193421	642	0	aarch64-apple-darwin	rustc 1.96.0-nightly	31e098ec63d1e004
+0.2.0-alpha.3	fuzz_protocol	300	37990780	126215	0	aarch64-apple-darwin	rustc 1.96.0-nightly	31e098ec63d1e004
+0.2.0-alpha.3	fuzz_protocol_state	300	6006283	19954	0	aarch64-apple-darwin	rustc 1.96.0-nightly	31e098ec63d1e004
+0.2.0-alpha.3	fuzz_viewer_state	300	2357804	7833	0	aarch64-apple-darwin	rustc 1.96.0-nightly	31e098ec63d1e004
+0.2.0-alpha.3	fuzz_uri	300	32846031	109123	0	aarch64-apple-darwin	rustc 1.96.0-nightly	31e098ec63d1e004
+0.2.0-alpha.3	fuzz_serialize	300	5114478	16991	0	aarch64-apple-darwin	rustc 1.96.0-nightly	31e098ec63d1e004

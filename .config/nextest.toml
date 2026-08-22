@@ -1,0 +1,36 @@
+# Test profiles.
+#
+# `default` runs everything and is the profile the gate uses. `quick` is the
+# inner development loop and omits exactly three tests, named below.
+#
+# Those three cost 20.3s of a 21.4s suite; nothing else in 1249 tests reaches
+# 2s. They are slow because they wait on a real wall clock rather than because
+# they do much:
+#
+#   silent_tls_handshake_is_closed_at_the_production_deadline  10.0s
+#   sigint_triggers_bounded_drain                               5.2s
+#   sigterm_triggers_bounded_drain                              5.2s
+#
+# All three assert a production availability deadline — the TLS handshake
+# timeout, and the bounded drain on SIGINT/SIGTERM. `HANDSHAKE_TIMEOUT` is a
+# hardcoded 10s const used at two production call sites, and the test asserts
+# the listener does not close materially early, so the wait is what is being
+# verified and cannot be shortened without making the deadline injectable.
+#
+# Why this omits named tests rather than filtering on a duration: a duration
+# filter silently absorbs the next test that becomes slow, which is the one
+# case worth noticing. A test that is slow and not on this list is meant to
+# make the quick run visibly slower until someone decides which it is.
+
+[profile.default]
+# Nothing is filtered here. `make ci` must keep using this profile: these three
+# are the only coverage of two availability properties, and a gate that runs
+# only at release time is a gate that is red when it matters — see the fuzz
+# campaign, which lapsed unnoticed through 0.2.0-alpha.3.
+
+[profile.quick]
+# `binary(...)` rather than two test names for the signal pair: every test in
+# signal_shutdown.rs spawns a real dustnetd and waits on its exit, so a new one
+# added there belongs to this set by construction and should not need a second
+# edit here to stay out of the quick loop.
+default-filter = "not binary(signal_shutdown) and not test(silent_tls_handshake_is_closed_at_the_production_deadline)"

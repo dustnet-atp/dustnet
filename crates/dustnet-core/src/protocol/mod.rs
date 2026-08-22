@@ -24,6 +24,15 @@ pub const MAX_INPUT_MESSAGE_SIZE: usize = 64 * 1024;
 /// PAGE may contain up to 1 MiB of AML plus bounded session metadata.
 pub const MAX_PAGE_MESSAGE_SIZE: usize = 1024 * 1024 + 64 * 1024;
 
+/// Longest `Path` a PAGE may name itself with.
+///
+/// The same bound as a session scope, and for the same reason: both are a path
+/// a server chooses and a client stores, so neither should be able to grow the
+/// client's state by more than the other. The whole PAGE body is already
+/// bounded, but that bound is a megabyte — big enough that a path taking all of
+/// it would be a path nothing could sensibly display.
+pub const MAX_PAGE_PATH_LEN: usize = 1024;
+
 /// Maximum accepted size of a remotely fetched WASM module.
 /// Enforced by both clients and servers.
 pub const MAX_WASM_MODULE_SIZE: usize = 512 * 1024;
@@ -45,7 +54,8 @@ pub const MAX_PROTOCOL_DIAGNOSTIC_BYTES: usize = 2048;
 pub const PROTOCOL_VERSION: &str = "0.2";
 
 /// Capabilities implemented by this reference client and server.
-pub const SUPPORTED_CAPABILITIES: &[&str] = &["live-updates", "sessions", "wasm-effects"];
+pub const SUPPORTED_CAPABILITIES: &[&str] =
+    &["live-updates", "sessions", "wasm-effects", "page-path"];
 
 /// A validated ATP protocol version negotiated during HELLO/WELCOME.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,6 +100,7 @@ impl NegotiatedCapabilities {
     const LIVE_UPDATES: u8 = 1 << 0;
     const SESSIONS: u8 = 1 << 1;
     const WASM_EFFECTS: u8 = 1 << 2;
+    const PAGE_PATH: u8 = 1 << 3;
 
     pub fn negotiate(offered: &[String], accepted: &[String]) -> Self {
         let mut bits = 0;
@@ -101,6 +112,7 @@ impl NegotiatedCapabilities {
                 "live-updates" => Self::LIVE_UPDATES,
                 "sessions" => Self::SESSIONS,
                 "wasm-effects" => Self::WASM_EFFECTS,
+                "page-path" => Self::PAGE_PATH,
                 _ => 0,
             };
         }
@@ -115,6 +127,15 @@ impl NegotiatedCapabilities {
     }
     pub fn wasm_effects(self) -> bool {
         self.0 & Self::WASM_EFFECTS != 0
+    }
+    /// Whether a PAGE may name the path it was served from.
+    ///
+    /// Negotiated rather than always sent, for the same reason `sessions` is: a
+    /// `Path` line lives in the PAGE metadata block, and a client that does not
+    /// know the block exists reads it as the first line of the page. Sending it
+    /// only to a client that asked keeps an older one rendering correctly.
+    pub fn page_path(self) -> bool {
+        self.0 & Self::PAGE_PATH != 0
     }
 }
 

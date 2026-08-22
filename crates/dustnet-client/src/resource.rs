@@ -562,6 +562,10 @@ mod tests {
             ("Session token", dustnet_core::session::MAX_TOKEN_LEN as u64),
             ("Session scope", dustnet_core::session::MAX_SCOPE_LEN as u64),
             (
+                "PAGE path",
+                dustnet_core::protocol::MAX_PAGE_PATH_LEN as u64,
+            ),
+            (
                 "Animation regions",
                 dustnet_core::parser::MAX_ANIMATE_REGIONS as u64,
             ),

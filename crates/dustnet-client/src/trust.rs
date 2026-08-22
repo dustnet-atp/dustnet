@@ -351,7 +351,11 @@ impl TrustStore {
 /// Write owner-only, creating the file with restrictive permissions rather
 /// than relaxing them afterwards — a file that is briefly world-readable is a
 /// file another process on the machine had a chance to read.
-fn write_private(path: &Path, body: &str) -> Result<(), TrustError> {
+///
+/// Shared with [`crate::session_file`], which stores bearer credentials and
+/// wants exactly this behaviour. Returns the raw IO error so each caller can
+/// wrap it in its own store's error type.
+pub(crate) fn write_private(path: &Path, body: &str) -> io::Result<()> {
     #[cfg(unix)]
     {
         use std::io::Write as _;

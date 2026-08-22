@@ -7,9 +7,32 @@ use std::path::PathBuf;
 use crate::color::{Color, ColorSupport, ResolvedColor, parse_color};
 
 /// Client-side configuration.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ClientConfig {
     pub status_bar: StatusBarConfig,
+    /// Let CA-verified sessions outlive the process, so logging in once lasts.
+    ///
+    /// On by default. Logging in again at every launch is the kind of cost a
+    /// user pays continuously and a threat model never counts, and what is
+    /// stored is the site's own revocable, expiring, path-scoped token rather
+    /// than the password behind it. `remember-sessions = false` restores
+    /// memory-only sessions for anyone who wants them.
+    ///
+    /// What the default does *not* do is widen what a token reaches: only
+    /// CA-verified origins with an expiry are eligible, the file is owner-only
+    /// and refused when it is not, and a stored session is admitted under the
+    /// same bounds a server's directive is. See [`crate::session_file`], which
+    /// also explains why the file carries no security-level field.
+    pub remember_sessions: bool,
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        ClientConfig {
+            status_bar: StatusBarConfig::default(),
+            remember_sessions: true,
+        }
+    }
 }
 
 /// Status bar appearance and layout configuration.
@@ -341,7 +364,7 @@ fn config_path() -> Option<PathBuf> {
 ///
 /// Priority (highest to lowest):
 ///   1. Environment variables: DUSTNET_STATUS_FORMAT, DUSTNET_STATUS_LOCAL_FORMAT,
-///      DUSTNET_STATUS_FG, DUSTNET_STATUS_BG
+///      DUSTNET_STATUS_FG, DUSTNET_STATUS_BG, DUSTNET_REMEMBER_SESSIONS
 ///   2. Config file: ~/.config/dustnet/client.conf
 ///   3. Built-in defaults
 pub fn load_config() -> ClientConfig {
@@ -373,8 +396,16 @@ pub fn load_config() -> ClientConfig {
         config.status_bar.bg = Some(color);
         config.status_bar.reverse = false;
     }
+    if let Ok(val) = env::var("DUSTNET_REMEMBER_SESSIONS") {
+        config.remember_sessions = truthy(&val);
+    }
 
     config
+}
+
+/// The affirmative spellings accepted for a boolean setting.
+fn truthy(value: &str) -> bool {
+    value == "true" || value == "yes" || value == "1"
 }
 
 /// Parse a simple `key = value` config file.
@@ -410,7 +441,10 @@ fn apply_config_file(config: &mut ClientConfig, contents: &str) {
                     }
                 }
                 "status-reverse" => {
-                    config.status_bar.reverse = value == "true" || value == "yes" || value == "1";
+                    config.status_bar.reverse = truthy(value);
+                }
+                "remember-sessions" => {
+                    config.remember_sessions = truthy(value);
                 }
                 _ => {
                     // Unknown keys silently ignored (forward-compat)
@@ -423,6 +457,37 @@ fn apply_config_file(config: &mut ClientConfig, contents: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remember_sessions_is_on_until_the_config_turns_it_off() {
+        let mut config = ClientConfig::default();
+        assert!(
+            config.remember_sessions,
+            "logging in once should last by default"
+        );
+        // Turning it off is the case that has to work: someone who wants
+        // memory-only sessions is making a security decision, and a spelling
+        // the parser quietly ignored would leave them believing they had.
+        for value in ["false", "no", "0"] {
+            let mut config = ClientConfig::default();
+            apply_config_file(&mut config, &format!("remember-sessions = {value}\n"));
+            assert!(!config.remember_sessions, "`{value}` should disable it");
+        }
+        for value in ["true", "yes", "1"] {
+            let mut config = ClientConfig {
+                remember_sessions: false,
+                ..ClientConfig::default()
+            };
+            apply_config_file(&mut config, &format!("remember-sessions = {value}\n"));
+            assert!(config.remember_sessions, "`{value}` should enable it");
+        }
+        // A comment or an unrelated key leaves the default alone.
+        apply_config_file(
+            &mut config,
+            "# remember-sessions = false\nstatus-reverse = true\n",
+        );
+        assert!(config.remember_sessions);
+    }
 
     #[test]
     fn expand_mem_variable() {

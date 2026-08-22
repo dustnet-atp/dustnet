@@ -75,7 +75,7 @@ fn validate_inbound_body_len(
 
 fn validate_inbound_flags(msg_type: MessageType, flags: u8) -> Result<(), ProtocolError> {
     let allowed = match msg_type {
-        MessageType::Page => 0x0b,
+        MessageType::Page => 0x0f,
         MessageType::Update => 0x01,
         _ => 0,
     };
@@ -153,6 +153,18 @@ impl PendingAtpServerStream {
 }
 
 impl AtpServerStream {
+    /// Whether this client understands a PAGE that names its own path.
+    ///
+    /// Asked before attaching one rather than discovered by attaching it: the
+    /// capability gate *refuses* a frame needing a capability the peer did not
+    /// negotiate, so a server that attached a `Path` unconditionally would fail
+    /// to answer an older client at all instead of answering it as it always
+    /// did.
+    pub fn supports_page_path(&self) -> bool {
+        self.negotiated
+            .is_some_and(|negotiated| negotiated.capabilities.page_path())
+    }
+
     /// Send a frame to the client.
     /// Send an UPDATE assembled directly onto the wire from its parts.
     ///
@@ -357,11 +369,15 @@ impl AtpServerStream {
                 negotiated.capabilities.live_updates()
             }
             MessageType::Resource => negotiated.capabilities.wasm_effects(),
-            MessageType::Page if PageFlags::from_bits(flags).has_live_regions => {
-                negotiated.capabilities.live_updates()
-            }
-            MessageType::Page if PageFlags::from_bits(flags).has_session => {
-                negotiated.capabilities.sessions()
+            // Every flag that is set, not the first one that matches. Written
+            // as guarded arms this was one arm per flag, and only the earliest
+            // ran — so a PAGE claiming live regions *and* a session was let
+            // through on `live-updates` alone.
+            MessageType::Page => {
+                let page = PageFlags::from_bits(flags);
+                (!page.has_live_regions || negotiated.capabilities.live_updates())
+                    && (!page.has_session || negotiated.capabilities.sessions())
+                    && (!page.has_path || negotiated.capabilities.page_path())
             }
             _ => true,
         } && (!carries_session || negotiated.capabilities.sessions());

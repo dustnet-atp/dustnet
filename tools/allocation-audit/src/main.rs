@@ -446,6 +446,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "one fixed-size pin per host and port the user connected to under --tofu, read from and written to a local file. A hostile server can redirect across hosts and so add entries, but each is ~110 bytes and requires a connection this client made; a cap is deliberately absent because evicting a pin silently reopens the first-use window it exists to close",
     ),
     (
+        "crates/dustnet-client/src/session_file.rs",
+        "SessionFile",
+        "one locally derived path to the opt-in session store, or none when persistence is off; nothing remotely influenced is retained here. The sessions the file holds are accounted by row core.session.sites under the lease GovernedSessionStore takes, and a file is admitted through the same apply_directive path a server directive is, so its length buys no storage the bounds there do not already cover",
+    ),
+    (
         "crates/dustnet-client/src/compositor/animate/mod.rs",
         "AnimationResizeCandidate",
         "animation tick/resize transfer value; its collections are pre-admitted with an exact _collection_lease before any adapter state advances",
@@ -1177,13 +1182,20 @@ struct Row {
     tests: String,
 }
 
+const FLAGS: &[&str] = &[
+    "--check",
+    "--check-campaign",
+    "--report",
+    "--fuzz-fingerprint",
+];
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args
-        .iter()
-        .any(|arg| arg != "--check" && arg != "--report" && arg != "--fuzz-fingerprint")
-    {
-        eprintln!("usage: dustnet-allocation-audit [--check] [--report] [--fuzz-fingerprint]");
+    if args.iter().any(|arg| !FLAGS.contains(&arg.as_str())) {
+        eprintln!(
+            "usage: dustnet-allocation-audit [--check] [--check-campaign] [--report] \
+             [--fuzz-fingerprint]"
+        );
         std::process::exit(2);
     }
     if args.iter().any(|arg| arg == "--fuzz-fingerprint") {
@@ -1194,7 +1206,26 @@ fn main() {
         report(&repository_root());
         return;
     }
-    if let Err(errors) = check(&repository_root()) {
+
+    // The two checks are separate flags because they belong to different
+    // tiers, not because either is optional: `--check` is what `make test` and
+    // `make ci` run on every change, and `--check-campaign` is the 40-minute
+    // claim that `make ci-full` runs before a release. Additive, and bare
+    // `--check` stays the default so nothing that invoked this with no
+    // arguments changes behaviour.
+    let root = repository_root();
+    let mut errors = Vec::new();
+    if (args.is_empty() || args.iter().any(|arg| arg == "--check"))
+        && let Err(found) = check(&root)
+    {
+        errors.extend(found);
+    }
+    if args.iter().any(|arg| arg == "--check-campaign")
+        && let Err(found) = check_fuzz_campaign(&root)
+    {
+        errors.extend(found);
+    }
+    if !errors.is_empty() {
         for error in errors {
             eprintln!("allocation audit: {error}");
         }
@@ -1529,18 +1560,6 @@ fn check(root: &Path) -> Result<(), Vec<String>> {
     for row in &coverage.bare {
         errors.push(format!(
             "governed row `{row}` names no test that drives an owner-keyed rejection hook"
-        ));
-    }
-
-    // A version string without a pre-release suffix claims something shipped.
-    // It does not ship without the gate behind it being written down.
-
-    // Fuzzing depth as an artifact rather than a memory: every target must
-    // have been run against this exact version, with the numbers recorded.
-    for target in uncampaigned_fuzz_targets(root) {
-        errors.push(format!(
-            "fuzz target `{target}` has no row in {FUZZ_LOG} for the current \
-             workspace version; run `make fuzz-campaign`"
         ));
     }
 
@@ -2812,6 +2831,41 @@ fn collect_rust_sources(dir: &Path, root: &Path, out: &mut Vec<String>) {
     }
 }
 
+/// The campaign requirement, checked on its own.
+///
+/// Split out of [`check`] because of where it lands in the workflow, not for
+/// tidiness. A campaign is `FUZZ_SECONDS` per target — 40 minutes for the
+/// eight at the default 300 — and the fingerprint covers every source under
+/// `crates/`, so requiring this from `check` made `make test` and `make ci`
+/// unpassable after any production edit until an undocumented 40-minute
+/// command had been run. Both are documented as things to run constantly, so
+/// neither can carry a 40-minute prerequisite; `make ci-full`, documented as
+/// the release gate, can.
+///
+/// `make ci-full` runs it immediately after `fuzz-campaign`, where what it
+/// proves is that no edit to `crates/` landed while the campaign was running.
+/// That is not hypothetical: it happened during the session this split came
+/// from, and the campaign it invalidated had already finished.
+fn check_fuzz_campaign(root: &Path) -> Result<(), Vec<String>> {
+    let uncampaigned = uncampaigned_fuzz_targets(root);
+    if uncampaigned.is_empty() {
+        return Ok(());
+    }
+    // Computed only on the failing path, so the passing one walks the sources
+    // once. Printed because it is the half of the comparison a reader cannot
+    // see: the table visibly has rows, and nothing else says they are stale.
+    let fingerprint = fuzz_code_fingerprint(root);
+    Err(uncampaigned
+        .into_iter()
+        .map(|target| {
+            format!(
+                "fuzz target `{target}` has no row in {FUZZ_LOG} for the fuzzed code now \
+                 in the tree (fingerprint {fingerprint}); run `make fuzz-campaign`"
+            )
+        })
+        .collect())
+}
+
 /// Fuzz targets with no campaign row for the code currently in the tree.
 ///
 /// "Run it for hours" is unrepeatable and so cannot be a closure condition.
@@ -3517,15 +3571,72 @@ fn binding_name(code: &str, offset: usize) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// Every fuzz target has been run against the code now in the tree, with
-    /// the result recorded. A new target, or an edit to a fuzzed source, fails
-    /// here until a campaign has covered it.
+    /// A scratch directory for one test, removed on the way out.
+    ///
+    /// No `tempfile`: this crate is deliberately dependency-free apart from
+    /// serde, and a fixture root is a `create_dir_all` and a `remove_dir_all`.
+    fn scratch_root(name: &str) -> PathBuf {
+        let root = std::env::temp_dir()
+            .join("dustnet-allocation-audit")
+            .join(format!("{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(FUZZ_TARGET_DIR)).expect("fixture fuzz target dir");
+        fs::create_dir_all(root.join("verification")).expect("fixture verification dir");
+        root
+    }
+
+    fn append_campaign_row(log: &Path, target: &str, code: &str) {
+        let existing = fs::read_to_string(log).unwrap_or_default();
+        let row = format!("0.0.0\t{target}\t300\t1\t1\t0\thost\ttoolchain\t{code}\n");
+        fs::write(log, existing + &row).expect("fixture campaign row");
+    }
+
+    /// The campaign requirement, exercised against a fixture rather than
+    /// against the tree.
+    ///
+    /// It used to assert the tree: `uncampaigned_fuzz_targets(&repository_root())`
+    /// had to be empty, which made a green `cargo test` depend on when someone
+    /// last spent forty minutes fuzzing, and made this crate's own test suite
+    /// fail for a reason that had nothing to do with this crate. `make ci-full`
+    /// asserts the tree now, through `--check-campaign`. This asserts the
+    /// predicate that does it, including the case that is easy to get wrong.
     #[test]
-    fn every_fuzz_target_has_a_campaign_row_for_this_code() {
+    fn a_row_clears_only_its_own_target_and_only_for_the_current_code() {
+        let root = scratch_root("campaign");
+        let targets = root.join(FUZZ_TARGET_DIR);
+        fs::write(targets.join("fuzz_alpha.rs"), b"// alpha\n").expect("fixture target");
+        fs::write(targets.join("fuzz_beta.rs"), b"// beta\n").expect("fixture target");
+        let code = fuzz_code_fingerprint(&root);
+        let log = root.join(FUZZ_LOG);
+
+        // No log at all: nothing is campaigned.
         assert_eq!(
-            uncampaigned_fuzz_targets(&repository_root()),
-            Vec::<String>::new()
+            uncampaigned_fuzz_targets(&root),
+            vec!["fuzz_alpha".to_string(), "fuzz_beta".to_string()]
         );
+        assert!(check_fuzz_campaign(&root).is_err());
+
+        // A row clears its own target and not the other one.
+        append_campaign_row(&log, "fuzz_alpha", &code);
+        assert_eq!(
+            uncampaigned_fuzz_targets(&root),
+            vec!["fuzz_beta".to_string()]
+        );
+
+        // A row for stale code clears nothing. This is the case worth pinning:
+        // it is what makes the gate red after an unrelated edit, and a future
+        // change that keyed rows on anything looser would silently pass here.
+        append_campaign_row(&log, "fuzz_beta", "0000000000000000");
+        assert_eq!(
+            uncampaigned_fuzz_targets(&root),
+            vec!["fuzz_beta".to_string()]
+        );
+
+        append_campaign_row(&log, "fuzz_beta", &code);
+        assert!(uncampaigned_fuzz_targets(&root).is_empty());
+        assert!(check_fuzz_campaign(&root).is_ok());
+
+        fs::remove_dir_all(&root).expect("remove fixture root");
     }
 
     /// Panic-freedom's own closure condition, asserted on the tree: every

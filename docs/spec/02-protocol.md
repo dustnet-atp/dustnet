@@ -130,18 +130,35 @@ The PAGE body contains AML markup. See [03-markup.md](03-markup.md).
 PAGE flags:
 - **CACHEABLE** (`0x01`): Reserved cache hint. The reference client does not currently cache pages.
 - **HAS_LIVE_REGIONS** (`0x02`): The page contains live-updating regions that the client should subscribe to
-- **HAS_SESSION** (`0x08`): The body begins with session metadata before a blank line separator, then AML content (see Authentication below)
+- **HAS_PATH** (`0x04`): The metadata block carries a `Path` naming the page this body is (see Naming the Page below)
+- **HAS_SESSION** (`0x08`): The metadata block carries session directives (see Authentication below)
 
-When `HAS_SESSION` is set, the frame body has this structure:
+When `HAS_PATH` or `HAS_SESSION` is set, the frame body has this structure:
 
 ```
+Path: <path>
 Set-Session: <token> <scope> [expires]
 Clear-Session: <scope>
 
 <AML content>
 ```
 
-The metadata section contains `Set-Session` and/or `Clear-Session` directives, one per line, terminated by a blank line (`\n\n`). Everything after the blank line is the AML page content. When `HAS_SESSION` is not set, the entire body is AML content — this preserves backward compatibility with clients that do not support sessions.
+The metadata section contains a `Path` and/or `Set-Session` and `Clear-Session` directives, one per line, terminated by a blank line (`\n\n`). Everything after the blank line is the AML page content. When neither flag is set, the entire body is AML content — this preserves backward compatibility with clients that support neither.
+
+A flag must be accompanied by the field it promises, and a field must be accompanied by its flag. A `Path` with `HAS_PATH` unset, or `HAS_PATH` with no `Path`, is a malformed body: without that rule the same message would have two encodings.
+
+### Naming the Page
+
+A PAGE may name the path it *is*, which is not always the path that was asked for. An accepted INPUT is answered with the page its handler chose — a login submitted to `/login` is answered with the front page — and without a `Path` the client has no way to learn that. It keeps the submitted path as its location, so a reload puts the person back on the form they just completed.
+
+- The value is an absolute path on the sending site, with an optional query string: `/index`, `/index?item=12`.
+- It is resolved against the URI that produced the response, so it can only relabel the location **within the same origin**. A value beginning `//`, carrying a scheme, or containing a fragment is malformed. Moving between sites is what REDIRECT is for, and that path performs a fresh HELLO and counts against the redirect limit; this deliberately does neither.
+- Maximum length 1,024 characters.
+- It is advisory. A client that does not understand the field, or cannot use the value, displays the page at the URI it was fetched from — the page itself is unaffected.
+
+Because the field is gated on the `page-path` capability, a server sends it only to a client that offered support. A client that did not gets exactly the body it would have got before the field existed.
+
+Servers need not send a `Path` when the response is the path that was requested, and the reference server does not: on a GET the field would only ever repeat the request.
 
 ## INPUT Submission
 
@@ -227,7 +244,7 @@ Authentication uses the existing form submission mechanism — no special login 
 1. The user navigates to a page that requires authentication
 2. The server may respond with the page normally (if the section allows anonymous access) or with a 401 error whose body contains a login page with input fields
 3. The user submits credentials via a normal INPUT message (username, password, or whatever the site requires)
-4. If authentication succeeds, the server responds with a PAGE or REDIRECT and includes a `Set-Session` field in the response
+4. If authentication succeeds, the server responds with a PAGE or REDIRECT and includes a `Set-Session` field in the response. A PAGE sent with `Set-Session` is rendered for the session it issues, not for the one the request arrived with — otherwise the frame that logs someone in is also the frame that shows them logged out
 5. The client stores the token, scoped to the declared absolute path on that site
 6. Subsequent GET and INPUT requests whose path matches the scope automatically include the token
 

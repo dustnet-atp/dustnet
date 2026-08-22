@@ -72,17 +72,21 @@ ERROR       = "ERROR " 3DIGIT LF
 UPDATE      = "UPDATE " value LF LF aml-fragment
 
 PAGE        = aml-document
-            / session-directive *(session-directive) LF aml-document
-session-directive = "Set-Session: " value LF
-                  / "Clear-Session: " value LF
+            / page-field *(page-field) LF aml-document
+page-field  = "Path: " path-query LF
+            / "Set-Session: " value LF
+            / "Clear-Session: " value LF
+path-query  = path ["?" value]
 RESOURCE    = *OCTET
 ```
 
 HELLO capabilities may contain future names. WELCOME may select only names
 offered by HELLO. ATP 0.2 behavior is enabled only for the intersection of
-`live-updates`, `sessions`, and `wasm-effects`. UPDATE/SUBSCRIBE/UNSUBSCRIBE,
-session-bearing PAGE/requests, and RESOURCE/WASM behavior without the matching
-negotiated capability are fatal errors. PING and PONG are core 0.2 frames and
+`live-updates`, `sessions`, `wasm-effects`, and `page-path`.
+UPDATE/SUBSCRIBE/UNSUBSCRIBE, session-bearing PAGE/requests, a PAGE naming its
+own path, and RESOURCE/WASM behavior without the matching negotiated capability
+are fatal errors. A PAGE setting several flags must satisfy the capability each
+one requires, not merely the first. PING and PONG are core 0.2 frames and
 are not capability-gated, but like every other application frame they are fatal
 before HELLO/WELCOME negotiation completes.
 

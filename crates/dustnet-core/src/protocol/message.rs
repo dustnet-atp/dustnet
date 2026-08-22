@@ -1,7 +1,7 @@
 use super::frame::MessageType;
 use super::{
     MAX_CONTROL_MESSAGE_SIZE, MAX_INPUT_MESSAGE_SIZE, MAX_LIVE_UPDATE_SIZE, MAX_PAGE_MESSAGE_SIZE,
-    ProtocolError,
+    MAX_PAGE_PATH_LEN, ProtocolError,
 };
 use crate::session::{MAX_SCOPE_LEN, MAX_TOKEN_LEN, SessionDirective};
 
@@ -391,6 +391,25 @@ fn parse_control_field(line: &str) -> Result<(&str, &str), ProtocolError> {
     Ok((key, value))
 }
 
+/// Whether `value` may be a PAGE's `Path`.
+///
+/// An absolute path on the sending site, with an optional query. The three
+/// refusals each close a way of turning a relabelling into a navigation:
+///
+/// - a leading `//` is a protocol-relative reference, and resolving it would
+///   move the client to whatever host followed — a cross-origin redirect that
+///   skips the redirect limit and the fresh HELLO a real one performs;
+/// - a scheme is the same escape spelled differently, and is excluded by
+///   requiring the first byte to be `/`;
+/// - a fragment has no meaning in ATP, so accepting one would invent syntax the
+///   grammar does not have.
+fn valid_page_path(value: &str) -> bool {
+    value.starts_with('/')
+        && !value.starts_with("//")
+        && !value.contains('#')
+        && !value.chars().any(char::is_control)
+}
+
 fn validate_primary_value(label: &str, value: &str) -> Result<(), ProtocolError> {
     if value.is_empty() || value.chars().any(char::is_control) {
         return Err(ProtocolError::invalid_message(format_args!(
@@ -551,6 +570,8 @@ impl GetMessage {
 pub struct PageFlags {
     pub cacheable: bool,
     pub has_live_regions: bool,
+    /// The metadata block carries a `Path` naming the page this body is.
+    pub has_path: bool,
     pub has_session: bool,
 }
 
@@ -559,6 +580,7 @@ impl PageFlags {
         PageFlags {
             cacheable: flags & 0x01 != 0,
             has_live_regions: flags & 0x02 != 0,
+            has_path: flags & 0x04 != 0,
             has_session: flags & 0x08 != 0,
         }
     }
@@ -571,6 +593,9 @@ impl PageFlags {
         if self.has_live_regions {
             bits |= 0x02;
         }
+        if self.has_path {
+            bits |= 0x04;
+        }
         if self.has_session {
             bits |= 0x08;
         }
@@ -578,25 +603,45 @@ impl PageFlags {
     }
 }
 
-/// Server PAGE message — the body is AML content, optionally preceded by session metadata.
+/// Server PAGE message — the body is AML content, optionally preceded by a
+/// metadata block.
 ///
-/// When `flags.has_session` is set, the frame body starts with session metadata
-/// lines before a `\n\n` separator, then AML content. When unset, the entire
-/// body is AML content.
+/// When `flags.has_path` or `flags.has_session` is set, the frame body starts
+/// with metadata lines before a `\n\n` separator, then AML content. When
+/// neither is set, the entire body is AML content.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageMessage {
     pub content: String,
     pub flags: PageFlags,
+    /// The path this body *is*, when the server chose to say.
+    ///
+    /// A response is not always to the path that was asked for: an accepted
+    /// `INPUT` is answered with the page the handler named, which is how a
+    /// login lands on the front page. Without this the client has no way to
+    /// learn that, so it keeps the submitted path as its location and a reload
+    /// puts the person back on the login form.
+    ///
+    /// Advisory and same-origin only. It names a path on the site that sent it
+    /// and never a URI, so it can relabel where you are within a site but
+    /// cannot move you to another one — that is what `REDIRECT` is for, and it
+    /// is subject to the redirect limit this deliberately is not.
+    pub path: Option<String>,
     /// Session directives from the server (Set-Session, Clear-Session).
     pub session_directives: Vec<SessionDirective>,
 }
 
 impl PageMessage {
     /// Encode the PAGE body for the wire.
-    /// If session directives are present, prepends metadata before `\n\n`.
+    /// If a path or session directives are present, prepends metadata before
+    /// `\n\n`.
     pub fn encode_body(&self) -> Result<(Vec<u8>, u8), ProtocolError> {
         let mut flags = self.flags;
-        if self.session_directives.is_empty() {
+        if self.session_directives.is_empty() && self.path.is_none() {
+            // Cleared, not trusted: a caller that set the flag by hand without
+            // supplying the field would otherwise frame a body its own decoder
+            // refuses. The fields are what decide the flags, everywhere.
+            flags.has_session = false;
+            flags.has_path = false;
             enforce_message_limit(MessageType::Page, self.content.len(), MAX_PAGE_MESSAGE_SIZE)?;
             let mut body = Vec::new();
             body.try_reserve_exact(self.content.len()).map_err(|_| {
@@ -608,8 +653,20 @@ impl PageMessage {
             return Ok((body, flags.to_bits()));
         }
 
-        flags.has_session = true;
+        flags.has_session = !self.session_directives.is_empty();
+        flags.has_path = self.path.is_some();
         let mut requested = checked_add_size(1, self.content.len())?;
+        if let Some(path) = &self.path {
+            // Refused at encode time rather than truncated: a path is what the
+            // client will call this page, and half a path is a different page.
+            if path.len() > MAX_PAGE_PATH_LEN || !valid_page_path(path) {
+                return Err(ProtocolError::InvalidMessage(
+                    "PAGE Path is oversized or not an absolute same-origin path".into(),
+                ));
+            }
+            requested = checked_add_size(requested, "Path: \n".len())?;
+            requested = checked_add_size(requested, path.len())?;
+        }
         for directive in &self.session_directives {
             requested = checked_add_size(
                 requested,
@@ -636,6 +693,13 @@ impl PageMessage {
         let mut body = Vec::new();
         body.try_reserve_exact(requested)
             .map_err(|_| ProtocolError::ResourceExhausted { requested })?;
+        // Path first, so the block has one canonical order and a test can
+        // compare bytes rather than parse them back.
+        if let Some(path) = &self.path {
+            body.extend_from_slice(b"Path: ");
+            body.extend_from_slice(path.as_bytes());
+            body.push(b'\n');
+        }
         for directive in &self.session_directives {
             match directive {
                 SessionDirective::Set {
@@ -665,17 +729,18 @@ impl PageMessage {
         Ok((body, flags.to_bits()))
     }
 
-    /// Decode a PAGE frame body, extracting session directives if present.
+    /// Decode a PAGE frame body, extracting the metadata block if present.
     pub fn decode_body(body: &[u8], flags_byte: u8) -> Result<Self, ProtocolError> {
         enforce_message_limit(MessageType::Page, body.len(), MAX_PAGE_MESSAGE_SIZE)?;
         let flags = PageFlags::from_bits(flags_byte);
         let body_str = std::str::from_utf8(body)
             .map_err(|e| ProtocolError::invalid_message(format_args!("invalid UTF-8: {e}")))?;
 
-        if !flags.has_session {
+        if !flags.has_session && !flags.has_path {
             return Ok(PageMessage {
                 content: try_owned_string(body_str)?,
                 flags,
+                path: None,
                 session_directives: Vec::new(),
             });
         }
@@ -685,7 +750,7 @@ impl PageMessage {
             Some(pos) => (&body_str[..pos], &body_str[pos + 2..]),
             None => {
                 return Err(ProtocolError::InvalidMessage(
-                    "PAGE session flag requires metadata separator".into(),
+                    "PAGE metadata flag requires metadata separator".into(),
                 ));
             }
         };
@@ -697,8 +762,34 @@ impl PageMessage {
                 requested: directive_count.saturating_mul(std::mem::size_of::<SessionDirective>()),
             }
         })?;
+        let mut path = None;
         for line in metadata.lines() {
             let (key, value) = parse_control_field(line)?;
+            if key == "Path" {
+                // A singleton, rejected on repeat rather than last-one-wins:
+                // which of two paths survives is a difference an attacker picks
+                // and a reviewer does not see.
+                if path.is_some() {
+                    return Err(ProtocolError::InvalidMessage(
+                        "duplicate PAGE Path field".into(),
+                    ));
+                }
+                if !flags.has_path {
+                    return Err(ProtocolError::InvalidMessage(
+                        "PAGE Path without the path flag".into(),
+                    ));
+                }
+                if value.len() > MAX_PAGE_PATH_LEN {
+                    return Err(ProtocolError::InvalidMessage("PAGE Path too long".into()));
+                }
+                if !valid_page_path(value) {
+                    return Err(ProtocolError::InvalidMessage(
+                        "PAGE Path must be an absolute same-origin path".into(),
+                    ));
+                }
+                path = Some(try_owned_string(value)?);
+                continue;
+            }
             if !matches!(key, "Set-Session" | "Clear-Session") {
                 return Err(ProtocolError::invalid_message(format_args!(
                     "unknown PAGE metadata field: {key}"
@@ -713,10 +804,24 @@ impl PageMessage {
                 )));
             }
         }
+        // The flag promises a field. Accepting the flag with no field would make
+        // two encodings of the same message, and a differential fuzzer finds
+        // that before a reviewer does.
+        if flags.has_path && path.is_none() {
+            return Err(ProtocolError::InvalidMessage(
+                "PAGE path flag without a Path field".into(),
+            ));
+        }
+        if flags.has_session && directives.is_empty() {
+            return Err(ProtocolError::InvalidMessage(
+                "PAGE session flag without a session directive".into(),
+            ));
+        }
 
         Ok(PageMessage {
             content: try_owned_string(content)?,
             flags,
+            path,
             session_directives: directives,
         })
     }
@@ -1426,26 +1531,61 @@ fn validate_subscribe_body(body: &str) -> Result<bool, ProtocolError> {
     Ok(seen[2])
 }
 
+/// Validate a PAGE body without assembling it.
+///
+/// This must accept and reject exactly what [`PageMessage::decode_body`] does —
+/// it is the same grammar checked on the framing path, where no `PageMessage` is
+/// built. Two readers of one wire format drift silently, so
+/// `page_validation_matches_decoding` compares them over a corpus rather than
+/// trusting this comment.
 fn validate_page_body(body: &str, flags: PageFlags) -> Result<(), ProtocolError> {
     enforce_message_limit(MessageType::Page, body.len(), MAX_PAGE_MESSAGE_SIZE)?;
-    if !flags.has_session {
+    if !flags.has_session && !flags.has_path {
         return Ok(());
     }
     let Some((metadata, _)) = body.split_once("\n\n") else {
         return Err(ProtocolError::InvalidMessage(
-            "PAGE session flag requires metadata separator".into(),
+            "PAGE metadata flag requires metadata separator".into(),
         ));
     };
+    let mut saw_path = false;
+    let mut saw_directive = false;
     for line in metadata.lines() {
         let (key, value) = parse_control_field(line)?;
         let valid = match key {
+            "Path" => {
+                if saw_path {
+                    return Err(ProtocolError::InvalidMessage(
+                        "duplicate PAGE Path field".into(),
+                    ));
+                }
+                if !flags.has_path {
+                    return Err(ProtocolError::InvalidMessage(
+                        "PAGE Path without the path flag".into(),
+                    ));
+                }
+                saw_path = true;
+                if value.len() > MAX_PAGE_PATH_LEN {
+                    return Err(ProtocolError::InvalidMessage("PAGE Path too long".into()));
+                }
+                if !valid_page_path(value) {
+                    return Err(ProtocolError::InvalidMessage(
+                        "PAGE Path must be an absolute same-origin path".into(),
+                    ));
+                }
+                true
+            }
             "Set-Session" => {
+                saw_directive = true;
                 let mut parts = value.splitn(3, ' ');
                 let token = parts.next().unwrap_or_default();
                 let scope = parts.next().unwrap_or("/");
                 !token.is_empty() && token.len() <= MAX_TOKEN_LEN && valid_session_scope(scope)
             }
-            "Clear-Session" => valid_session_scope(value.trim()),
+            "Clear-Session" => {
+                saw_directive = true;
+                valid_session_scope(value.trim())
+            }
             _ => {
                 return Err(ProtocolError::invalid_message(format_args!(
                     "unknown PAGE metadata field: {key}"
@@ -1457,6 +1597,16 @@ fn validate_page_body(body: &str, flags: PageFlags) -> Result<(), ProtocolError>
                 "invalid PAGE metadata field: {key}"
             )));
         }
+    }
+    if flags.has_path && !saw_path {
+        return Err(ProtocolError::InvalidMessage(
+            "PAGE path flag without a Path field".into(),
+        ));
+    }
+    if flags.has_session && !saw_directive {
+        return Err(ProtocolError::InvalidMessage(
+            "PAGE session flag without a session directive".into(),
+        ));
     }
     Ok(())
 }
@@ -1832,6 +1982,7 @@ mod tests {
         let flags = PageFlags {
             cacheable: true,
             has_live_regions: true,
+            has_path: false,
             has_session: false,
         };
         let bits = flags.to_bits();
@@ -1845,6 +1996,7 @@ mod tests {
         let flags = PageFlags {
             cacheable: false,
             has_live_regions: false,
+            has_path: false,
             has_session: true,
         };
         assert_eq!(flags.to_bits(), 0x08);
@@ -1867,6 +2019,7 @@ mod tests {
         let msg = PageMessage {
             content: "[page][text]hello[/text][/page]".into(),
             flags: PageFlags::default(),
+            path: None,
             session_directives: Vec::new(),
         };
         let (body, flags_byte) = msg.encode_body().unwrap();
@@ -1881,6 +2034,7 @@ mod tests {
         let msg = PageMessage {
             content: "[page][text]welcome[/text][/page]".into(),
             flags: PageFlags::default(),
+            path: None,
             session_directives: vec![SessionDirective::Set {
                 token: "tok123".into(),
                 scope: "/admin/".into(),
@@ -1910,6 +2064,7 @@ mod tests {
         let msg = PageMessage {
             content: "[page][text]logged out[/text][/page]".into(),
             flags: PageFlags::default(),
+            path: None,
             session_directives: vec![SessionDirective::Clear {
                 scope: "/admin/".into(),
             }],
@@ -1926,11 +2081,189 @@ mod tests {
     }
 
     #[test]
+    fn page_message_with_a_path_names_itself() {
+        let msg = PageMessage {
+            content: "[page][text]news[/text][/page]".into(),
+            flags: PageFlags::default(),
+            path: Some("/index".into()),
+            session_directives: Vec::new(),
+        };
+        let (body, flags_byte) = msg.encode_body().unwrap();
+        assert!(PageFlags::from_bits(flags_byte).has_path);
+        assert!(!PageFlags::from_bits(flags_byte).has_session);
+        assert!(body.starts_with(b"Path: /index\n\n"));
+        let decoded = PageMessage::decode_body(&body, flags_byte).unwrap();
+        assert_eq!(decoded.path.as_deref(), Some("/index"));
+        assert_eq!(decoded.content, msg.content);
+    }
+
+    /// The case the field exists for: a login answers with the front page and
+    /// says so, in the same frame that issues the session.
+    #[test]
+    fn a_path_and_a_session_share_one_metadata_block() {
+        let msg = PageMessage {
+            content: "[page][text]news[/text][/page]".into(),
+            flags: PageFlags::default(),
+            path: Some("/index".into()),
+            session_directives: vec![SessionDirective::Set {
+                token: "tok123".into(),
+                scope: "/".into(),
+                expires: Some(1_900_000_000),
+            }],
+        };
+        let (body, flags_byte) = msg.encode_body().unwrap();
+        let flags = PageFlags::from_bits(flags_byte);
+        assert!(flags.has_path && flags.has_session);
+        let decoded = PageMessage::decode_body(&body, flags_byte).unwrap();
+        assert_eq!(decoded.path.as_deref(), Some("/index"));
+        assert_eq!(decoded.session_directives.len(), 1);
+        assert_eq!(decoded.content, msg.content);
+    }
+
+    /// A path names a page on the site that sent it. A URI would let a page
+    /// relabel itself as living somewhere else, which is a redirect wearing a
+    /// page's clothes and would escape the redirect limit.
+    #[test]
+    fn a_page_path_must_be_absolute_and_bounded() {
+        for rejected in [
+            "atp://elsewhere.example/index",
+            "//elsewhere.example/index",
+            "index",
+            "../index",
+            "/index#frag",
+            "",
+        ] {
+            let msg = PageMessage {
+                content: "[page][/page]".into(),
+                flags: PageFlags::default(),
+                path: Some(rejected.into()),
+                session_directives: Vec::new(),
+            };
+            match msg.encode_body() {
+                Err(_) => {}
+                Ok((body, flags_byte)) => {
+                    assert!(
+                        PageMessage::decode_body(&body, flags_byte).is_err(),
+                        "{rejected:?} should not survive a round trip"
+                    );
+                }
+            }
+        }
+        let oversized = format!("/{}", "x".repeat(MAX_PAGE_PATH_LEN));
+        let msg = PageMessage {
+            content: "[page][/page]".into(),
+            flags: PageFlags::default(),
+            path: Some(oversized),
+            session_directives: Vec::new(),
+        };
+        assert!(msg.encode_body().is_err());
+    }
+
+    /// A flag promising a field that is not there would be a second encoding of
+    /// the same message. Both readers refuse it.
+    #[test]
+    fn a_metadata_flag_without_its_field_is_refused() {
+        for (body, flags) in [
+            (
+                b"Set-Session: tok /\n\n[page][/page]".as_slice(),
+                PageFlags {
+                    cacheable: false,
+                    has_live_regions: false,
+                    has_path: true,
+                    has_session: true,
+                },
+            ),
+            (
+                b"Path: /index\n\n[page][/page]".as_slice(),
+                PageFlags {
+                    cacheable: false,
+                    has_live_regions: false,
+                    has_path: true,
+                    has_session: true,
+                },
+            ),
+            (
+                b"Path: /index\n\n[page][/page]".as_slice(),
+                PageFlags {
+                    cacheable: false,
+                    has_live_regions: false,
+                    has_path: false,
+                    has_session: true,
+                },
+            ),
+        ] {
+            assert!(
+                PageMessage::decode_body(body, flags.to_bits()).is_err(),
+                "decoded a flag with no field: {flags:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_duplicate_page_path_is_refused() {
+        let flags = PageFlags {
+            cacheable: false,
+            has_live_regions: false,
+            has_path: true,
+            has_session: false,
+        };
+        assert!(
+            PageMessage::decode_body(
+                b"Path: /index\nPath: /login\n\n[page][/page]",
+                flags.to_bits()
+            )
+            .is_err()
+        );
+    }
+
+    /// The framing path validates a PAGE without assembling one, so it is a
+    /// second reader of the same grammar. Two readers drift; this is what says
+    /// they have not.
+    #[test]
+    fn page_validation_matches_decoding() {
+        let bodies: &[&[u8]] = &[
+            b"[page][/page]",
+            b"Path: /index\n\n[page][/page]",
+            b"Path: /index\nSet-Session: tok /\n\n[page][/page]",
+            b"Set-Session: tok / 1900000000\n\n[page][/page]",
+            b"Clear-Session: /\n\n[page][/page]",
+            b"Path: /index\nPath: /login\n\n[page][/page]",
+            b"Path: relative\n\n[page][/page]",
+            b"Path: atp://elsewhere.example/x\n\n[page][/page]",
+            b"Path: //elsewhere.example/x\n\n[page][/page]",
+            b"Path: /index#frag\n\n[page][/page]",
+            b"Path: /index?item=12\n\n[page][/page]",
+            b"Path: /index\n[page][/page]",
+            b"Unknown: /index\n\n[page][/page]",
+            b"Set-Session: \n\n[page][/page]",
+            b"\n\n[page][/page]",
+        ];
+        for body in bodies {
+            for bits in 0u8..16 {
+                let flags = PageFlags::from_bits(bits);
+                let validated = validate_page_body(
+                    std::str::from_utf8(body).expect("test bodies are UTF-8"),
+                    flags,
+                )
+                .is_ok();
+                let decoded = PageMessage::decode_body(body, bits).is_ok();
+                assert_eq!(
+                    validated,
+                    decoded,
+                    "validator and decoder disagree on {:?} with flags {bits:#04x}",
+                    String::from_utf8_lossy(body)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn page_encoding_and_decoding_enforce_page_bound() {
         let oversized = "x".repeat(MAX_PAGE_MESSAGE_SIZE + 1);
         let message = PageMessage {
             content: oversized.clone(),
             flags: PageFlags::default(),
+            path: None,
             session_directives: Vec::new(),
         };
         assert!(matches!(
@@ -2429,6 +2762,7 @@ mod tests {
         let page = PageMessage {
             content: "[text]ok[/text]".into(),
             flags: PageFlags::default(),
+            path: None,
             session_directives: vec![SessionDirective::Clear { scope: "/".into() }],
         };
         let (body, flags) = page.encode_body().unwrap();

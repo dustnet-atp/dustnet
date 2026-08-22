@@ -24,6 +24,7 @@ mod client;
 pub mod compositor;
 pub mod config;
 pub mod resource;
+pub mod session_file;
 mod session_store;
 mod transport;
 pub mod trust;

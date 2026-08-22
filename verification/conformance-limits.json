@@ -96,6 +96,11 @@
       "unit": "bytes"
     },
     {
+      "name": "PAGE path",
+      "value": 1024,
+      "unit": "characters"
+    },
+    {
       "name": "Animation regions",
       "value": 1024
     },

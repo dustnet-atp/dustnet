@@ -74,6 +74,9 @@ status-local-format = {fill}[ dustnet ]{fill}[ {scroll} {focus} ]{fill}[ {help} 
 status-fg = #888888
 status-bg = black
 status-reverse = false
+
+# Remember logins across launches (see Remembered Sessions below)
+remember-sessions = true
 ```
 
 `status-reverse = true` uses reverse video instead, taking the terminal's own
@@ -85,6 +88,42 @@ Keep `{security}` in any custom `status-format`. It is the only place the
 interface distinguishes a pinned or unauthenticated connection from a
 CA-verified one, so a format without it shows the same status bar for an
 `--insecure` link as for a verified one.
+
+### Remembered Sessions
+
+A login lasts across restarts by default, kept in
+`~/.local/state/dustnet/sessions` (`XDG_STATE_HOME` is respected, and
+`DUSTNET_SESSION_STORE` overrides both). The client never stores a password
+under any setting; what it keeps is the site's own session token, which the
+site can expire and revoke.
+
+`remember-sessions = false` turns that off: sessions then live in memory only,
+closing the client is a logout, and nothing is written anywhere. Worth choosing
+on a shared or backed-up machine, where a file only you can read is still a
+file that leaves your account.
+
+What is kept is deliberately narrow:
+
+- **Only CA-verified sites.** A session established under `--tofu`,
+  `--insecure` or plaintext stays in memory and dies with the client. The file
+  has no field naming a security level, so nothing in it can be edited to make
+  a session look better-authenticated than it was.
+- **Only logins with an expiry.** A token the site issued without one is used
+  for the session and never written down.
+- **Owner-only.** The file is created `0600`, and the client refuses to read it
+  if other users can — anyone who can read it is logged in as you. Fix the mode
+  or delete the file and log in again.
+- **Same limits as a live site.** 8 sessions per site and 256 in total, applied
+  to the file exactly as to a server's directives.
+
+If there is nowhere to put the file — no `HOME` and no `XDG_STATE_HOME`, as in
+a container — sessions stay in memory and nothing is reported, since nothing
+was asked for. Name a path with `DUSTNET_SESSION_STORE` to get them back.
+
+`:sessions` lists what is held and says which of the two modes is in effect.
+`:sessions clear` deletes the file along with the in-memory sessions, so it is
+a logout everywhere rather than only in this client. Deleting the file by hand
+does the same for a client that is not running.
 
 ### Status Bar and Command Line
 
@@ -112,4 +151,6 @@ Press backtick to open the client HUD. Its History and Errors tabs retain visit 
 | `DUSTNET_STATUS_LOCAL_FORMAT` | `status-local-format` |
 | `DUSTNET_STATUS_FG` | `status-fg` |
 | `DUSTNET_STATUS_BG` | `status-bg` |
+| `DUSTNET_REMEMBER_SESSIONS` | `remember-sessions` |
 | `DUSTNET_TRUST_STORE` | The pinned-certificate file path |
+| `DUSTNET_SESSION_STORE` | The remembered-session file path |

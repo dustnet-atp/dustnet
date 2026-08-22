@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- A login now survives restarting the client, where through alpha.3 closing it
+  was a logout. `docs/spec/07-security.md` claimed ephemeral client storage
+  unconditionally and now claims it for `remember-sessions = false`, which
+  restores the old behaviour exactly. The trade is stated there rather than
+  implied: a stored token is one an attacker with read access to the account
+  can take, against a re-authentication cost every user paid on every launch.
+
+### Added
+
+- Session persistence, in `~/.local/state/dustnet/sessions`
+  (`DUSTNET_SESSION_STORE` names another path). What may be stored is narrowed
+  rather than widened — CA-verified sites only, tokens with an expiry only, the
+  file created `0600` and refused when other users can read it, and a loaded
+  file admitted under the same 8-per-site and 256-total bounds a server's
+  directives are. A password is never stored under any setting. `:sessions`
+  says which mode is in effect, and `:sessions clear` now deletes the file as
+  well as the in-memory sessions.
+
 ## 0.2.0-alpha.3 - 2026-08-22
 
 ### Breaking
@@ -35,6 +57,16 @@
   handler answers `INPUT` instead of refusing it with 405.
 - `SessionChange::token()`, so a caller can read back the session it just
   issued rather than threading the token through its own return values.
+- A PAGE may name the path it is, under the new `page-path` capability: `Path:`
+  in the metadata block, an absolute same-origin path with an optional query.
+  The answer to a submission is often a different page from the one submitted
+  to, and this is how a client learns that — a login submitted to `/login` is
+  answered with the front page and now *lands* there, rather than displaying it
+  under `/login` and reloading back into the form. Resolved against the URI that
+  produced it and refused if it carries a scheme, a `//` prefix or a fragment,
+  so it can relabel a location within a site but never move between sites; that
+  stays REDIRECT's job, with the redirect limit and fresh HELLO that implies. A
+  client that did not offer the capability gets the body it always got.
 
 ### Changed
 
@@ -65,6 +97,18 @@
 
 ### Fixed
 
+- A PAGE that sets several flags is checked against the capability each one
+  needs. The check was a guarded match arm per flag and only the first matching
+  arm ran, so a PAGE claiming live regions *and* a session was admitted on
+  `live-updates` alone.
+- A login answers with the logged-in page. The response to an accepted `INPUT`
+  is rendered for the session the handler just granted rather than the one the
+  request arrived with, so a login no longer returns `Set-Session` and a
+  logged-out nav bar in the same frame — which read to the person who had just
+  typed their password as a login that failed. The granted token is resolved
+  through `SessionResolver` exactly as a `GET` would resolve it, so a handler
+  still cannot render a page as someone by claiming to have authenticated them:
+  a token the resolver rejects renders anonymously.
 - A session token never reaches a handler. The library resolves it to an
   identity once, at the boundary, and hands handlers the identity — a token in a
   generated page is a session-stealing bug that looks like a rendering bug.

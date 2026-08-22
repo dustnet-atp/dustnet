@@ -94,6 +94,43 @@ pub async fn run_viewer(
     })
 }
 
+/// Build the client, adopting the on-disk session store unless the user turned
+/// it off.
+///
+/// The second value is what to tell them about it: a session store that exists
+/// but could not be read is worth saying out loud, because the visible symptom
+/// otherwise is a login prompt that looks like the server's doing.
+///
+/// Having *nowhere* to put a store is the one failure that stays quiet. Since
+/// remembering is the default rather than a request, a machine with no `HOME`
+/// and no `XDG_STATE_HOME` — a container, a stripped service account — has not
+/// misconfigured anything; it simply has no state directory, and greeting
+/// every launch there with an error about a feature nobody asked for would be
+/// noise. Set `DUSTNET_SESSION_STORE` to name a location in that case.
+fn build_client(
+    policy: crate::client::TlsPolicy,
+    config: &ClientConfig,
+) -> (AtpClient, Option<String>) {
+    if !config.remember_sessions {
+        return (AtpClient::new(policy), None);
+    }
+    let file = match crate::session_file::SessionFile::at_default_path() {
+        Ok(file) => file,
+        Err(crate::session_file::SessionFileError::NoLocation) => {
+            return (AtpClient::new(policy), None);
+        }
+        Err(error) => return (AtpClient::new(policy), Some(error.to_string())),
+    };
+    let (client, outcome) = AtpClient::new(policy).remembering_sessions(file);
+    let notice = match outcome {
+        Ok(0) => None,
+        Ok(1) => Some("restored 1 remembered session".to_string()),
+        Ok(count) => Some(format!("restored {count} remembered sessions")),
+        Err(error) => Some(error.to_string()),
+    };
+    (client, notice)
+}
+
 /// Interactive viewer that fetches pages over ATP.
 pub async fn run_connected_viewer(
     initial_uri: &AtpUri,
@@ -103,7 +140,7 @@ pub async fn run_connected_viewer(
     config: &ClientConfig,
 ) -> Result<(), ViewerError> {
     let mut term = Terminal::enter()?;
-    let mut client = AtpClient::new(policy);
+    let (mut client, restore_notice) = build_client(policy, config);
     let (term_w, term_h) = Terminal::size()?;
     let mut lifecycle = ReducerPort::new(LifecycleModel::new(term_w, term_h));
     let origin = client.request_origin(initial_uri)?;
@@ -176,6 +213,10 @@ pub async fn run_connected_viewer(
             ViewerError::ParseFailed
         });
     };
+    // Set after the initial navigation, which would otherwise overwrite it.
+    if let Some(notice) = restore_notice {
+        runtime.command_line.set_message(&notice, false);
+    }
     let result = viewer_main_loop(runtime, lifecycle, color_support, wcfg, config).await;
     term.leave()?;
     result
@@ -185,7 +226,7 @@ pub async fn run_connected_viewer(
 
 /// Parse AML content into a Document, logging diagnostics to stderr.
 /// Generate an AML page showing all active sessions.
-fn render_sessions_page(sessions: &crate::session::SessionStore) -> String {
+fn render_sessions_page(sessions: &crate::session::SessionStore, persistent: bool) -> String {
     let mut aml = String::from(
         "[page mode=document title=\"Sessions\"]\n\
          \x20 [heading level=1 fg=cyan]Active Sessions[/heading]\n\
@@ -250,6 +291,15 @@ fn render_sessions_page(sessions: &crate::session::SessionStore) -> String {
         ));
     }
 
+    // Whether a session outlives the process is the one thing about it a user
+    // cannot infer from the list, and it decides whether closing the client is
+    // a logout. So the page says which it is either way, rather than mentioning
+    // only the non-default case.
+    aml.push_str(if persistent {
+        "\x20 [text dim]Remembered across launches for CA-verified sites with an expiry.[/text]\n"
+    } else {
+        "\x20 [text dim]Held in memory only; closing the client ends them.[/text]\n"
+    });
     aml.push_str(
         "\x20 [text dim]:sessions clear[/text] [text dim]— clear all[/text]\n\
          \x20 [text dim]:sessions clear <site>[/text] [text dim]— clear one site[/text]\n\
@@ -3232,7 +3282,28 @@ async fn dispatch_navigation_event(
     event: LifecycleEvent,
 ) -> Result<Option<ActivatedNavigation>, ViewerError> {
     super::dispatch_runtime_events(runtime, lifecycle, [event]).await?;
+    report_session_persistence_error(runtime);
     Ok(runtime.take_activated_navigation(lifecycle.scope.as_ref()))
+}
+
+/// Surface a session-store write failure, if the last operation had one.
+///
+/// Called from the two funnels session state can change through: a navigation,
+/// which is where a server directive is applied, and `:sessions clear`. Every
+/// failure produces exactly one message and none is suppressed as a repeat —
+/// a store that has started failing writes should say so each time, since the
+/// user is the only one who can do anything about the disk it lives on.
+fn report_session_persistence_error(runtime: &mut TerminalRuntime) {
+    let Some(error) = runtime
+        .client
+        .as_mut()
+        .and_then(AtpClient::take_session_persistence_error)
+    else {
+        return;
+    };
+    runtime
+        .command_line
+        .set_message_args(format_args!("{error}"), true);
 }
 
 async fn dispatch_presentation_action(
@@ -4700,12 +4771,16 @@ async fn viewer_main_loop(
                 }
                 ParsedCommand::Sessions => {
                     let empty = crate::session::SessionStore::default();
+                    let persistent = runtime
+                        .client
+                        .as_ref()
+                        .is_some_and(AtpClient::sessions_are_persistent);
                     let sessions = runtime
                         .client
                         .as_ref()
                         .map(AtpClient::sessions)
                         .unwrap_or(&empty);
-                    let aml_content = render_sessions_page(sessions);
+                    let aml_content = render_sessions_page(sessions, persistent);
                     dispatch_presentation_action(
                         &mut runtime,
                         &mut lifecycle,
@@ -4734,6 +4809,7 @@ async fn viewer_main_loop(
                                     .set_message("cleared all sessions", false);
                             }
                         }
+                        report_session_persistence_error(&mut runtime);
                     } else {
                         runtime
                             .command_line

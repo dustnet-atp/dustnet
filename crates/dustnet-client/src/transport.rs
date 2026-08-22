@@ -74,7 +74,7 @@ fn validate_inbound_body_len(
 
 fn validate_inbound_flags(msg_type: MessageType, flags: u8) -> Result<(), ProtocolError> {
     let allowed = match msg_type {
-        MessageType::Page => 0x0b,
+        MessageType::Page => 0x0f,
         MessageType::Update => 0x01,
         _ => 0,
     };
@@ -370,11 +370,15 @@ impl AtpConnection {
                 negotiated.capabilities.live_updates()
             }
             MessageType::Resource => negotiated.capabilities.wasm_effects(),
-            MessageType::Page if PageFlags::from_bits(flags).has_live_regions => {
-                negotiated.capabilities.live_updates()
-            }
-            MessageType::Page if PageFlags::from_bits(flags).has_session => {
-                negotiated.capabilities.sessions()
+            // Every flag that is set, not the first one that matches. Written
+            // as guarded arms this was one arm per flag, and only the earliest
+            // ran — so a PAGE claiming live regions *and* a session was let
+            // through on `live-updates` alone.
+            MessageType::Page => {
+                let page = PageFlags::from_bits(flags);
+                (!page.has_live_regions || negotiated.capabilities.live_updates())
+                    && (!page.has_session || negotiated.capabilities.sessions())
+                    && (!page.has_path || negotiated.capabilities.page_path())
             }
             _ => true,
         } && (!carries_session || negotiated.capabilities.sessions());
