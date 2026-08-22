@@ -45,6 +45,10 @@ address.
 Two platforms carry a verified gate for 0.2. Each is claimed at the scope of
 the gate that actually ran on it, not at the scope of the gate that exists.
 
+Neither column covers the fuzz campaign, which is no longer part of any gate —
+see the fuzzing section of `CONTRIBUTING.md`, and `verification/fuzz-campaign.tsv`
+for which code has actually been fuzzed.
+
 | Triple | `make ci` | `make ci-full` | Claim |
 |---|---|---|---|
 | `aarch64-apple-darwin` | verified | verified | **Supported** |

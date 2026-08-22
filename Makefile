@@ -6,7 +6,7 @@ SHELL := /bin/bash
 SITE_DIR ?=
 SITE_BUILD := target/site
 
-.PHONY: ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
+.PHONY: ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check fuzz-periodic effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
 
 # ─── Local verification gate ─────────────────────────────────
 #
@@ -26,9 +26,10 @@ SITE_BUILD := target/site
 # it produces the one artefact no single machine can: a manifest list covering
 # both amd64 and arm64.
 #
-#   make test      fast inner loop — use while working          (~10s)
-#   make ci        the full gate — run before every commit       (minutes)
-#   make ci-full   ci plus Miri, ASan and the fuzz campaign      (~an hour)
+#   make test           fast inner loop — use while working        (~10s)
+#   make ci             the full gate — before every commit       (minutes)
+#   make ci-full        ci plus Miri, ASan, fuzz smoke            (~20 min)
+#   make fuzz-periodic  the fuzz campaign, on its own             (~40 min)
 #
 # `make test` runs the `quick` nextest profile, which omits the three
 # wall-clock deadline tests that are 20.3s of a 22.5s suite; the omission is
@@ -36,14 +37,26 @@ SITE_BUILD := target/site
 # and omits nothing, so the deadline tests are still gated before every commit
 # rather than only before a release.
 #
-# `fuzz-campaign` is the reason ci-full is an hour: eight targets at
-# FUZZ_SECONDS each, 40 minutes at the default 300. It lives in ci-full and
-# nowhere else, and that placement is load-bearing. It used to live in no tier
-# at all while `allocation-audit` — a prerequisite of both `ci` and `test` —
-# required its output, so both the gate and the inner loop were unpassable
-# after any edit under crates/ until an undocumented 40-minute command had been
-# run. That is how 0.2.0-alpha.3 was tagged with a red gate. The requirement is
-# now `--check-campaign`, asked for here and only here.
+# `fuzz-periodic` is the campaign: eight targets at FUZZ_SECONDS each, 40
+# minutes at the default 300. It is in no gate, and the road here is worth
+# recording because both previous placements failed the same way.
+#
+# It first lived in no tier at all while `allocation-audit` — a prerequisite of
+# both `ci` and `test` — required its output, so the gate *and* the inner loop
+# were unpassable after any edit under crates/ until an undocumented 40-minute
+# command had been run. That is how 0.2.0-alpha.3 was cut with a red gate. So
+# it moved into ci-full, which made a release cost an hour and, because the
+# rows are keyed on a fingerprint of every source under crates/, demanded a
+# fresh parser campaign for a change to client session storage that no fuzz
+# target can reach.
+#
+# Both failures are the same failure: a 40-minute requirement invalidated by
+# edits it has nothing to do with, sitting in front of something people need to
+# run. It is now triggered by judgement — when fuzzed code changes. Note that
+# `--check-campaign` still *fails* when a row is missing; what changed is that
+# nothing invokes it on your behalf. The rows in
+# verification/fuzz-campaign.tsv record which code was fuzzed, so what a
+# release skipped is answerable instead of assumed.
 #
 # Host triple is resolved rather than hardcoded so ASan works on both
 # Apple Silicon and Intel macs.
@@ -63,14 +76,26 @@ CARGO_TOOLS := nextest audit deny vet fuzz
 ci: ci-preflight ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps install-check
 	@echo "── ci: all gates passed ──"
 
-# Order matters: fuzz-campaign-check runs *after* fuzz-campaign, so it does not
-# merely restate what the campaign just wrote. What it catches is an edit to
-# crates/ that landed while the campaign was running — the campaign fingerprints
-# the tree once at the start, so a mid-run commit leaves rows that were already
-# stale when they were written. That is not hypothetical; it is why this target
-# has two steps instead of one.
-ci-full: ci ci-fuzz-smoke ci-miri ci-asan fuzz-campaign fuzz-campaign-check
-	@echo "── ci-full: all gates passed, including Miri/ASan/fuzz ──"
+# The campaign is deliberately *not* here, though a bounded fuzz smoke run is.
+#
+# It used to be, and it made this target cost about an hour, of which the
+# campaign was forty minutes. The reason that was intolerable is not that
+# fuzzing is slow — it is that the campaign is keyed on a fingerprint of every
+# source under `crates/`, so any edit anywhere invalidates all eight targets at
+# once. A change to client-side session storage, which no fuzz target can
+# reach, demanded a fresh parser campaign. The requirement was therefore paid
+# constantly and told you almost nothing, which is how a gate stops being read
+# and starts being worked around.
+#
+# So it moved to `make fuzz-periodic`, run when the fuzzed code itself changes
+# rather than before every release. That is a weaker guarantee, honestly: a
+# release can now go out whose parser has not been fuzzed at its exact
+# fingerprint. The rows in `verification/fuzz-campaign.tsv` say which code was
+# fuzzed and for how long, so what a release is missing is answerable rather
+# than assumed.
+ci-full: ci ci-fuzz-smoke ci-miri ci-asan
+	@echo "── ci-full: all gates passed, including Miri/ASan and a fuzz smoke run ──"
+	@echo "   the campaign is separate: make fuzz-periodic"
 
 # Everything `make ci-full` needs that is not cargo itself. Fails naming what
 # is missing *and* the command that installs it, because "a fresh machine
@@ -450,9 +475,22 @@ allocation-audit:
 	eval "$$(mise activate bash)" && cargo fmt --manifest-path tools/allocation-audit/Cargo.toml -- --check
 	eval "$$(mise activate bash)" && cargo run --quiet --manifest-path tools/allocation-audit/Cargo.toml -- --check
 
-# Deliberately not a prerequisite of `test` or `ci`: satisfying it costs a
-# 40-minute campaign, and a gate documented as "run before every commit" cannot
-# ask for that. Reached through ci-full, or run by hand after a campaign.
+# Deliberately not a prerequisite of `test`, `ci` or `ci-full`: satisfying it
+# costs a 40-minute campaign, and no gate anyone runs on a schedule can ask for
+# that. Reached through `fuzz-periodic`, or run by hand after a campaign.
+# The periodic tier: run this when the code a fuzz target exercises has
+# changed — the parser, scanner, protocol, URI or serializer — rather than on a
+# calendar or before a release.
+#
+# Order matters: fuzz-campaign-check runs *after* fuzz-campaign, so it does not
+# merely restate what the campaign just wrote. What it catches is an edit to
+# crates/ that landed while the campaign was running — the campaign fingerprints
+# the tree once at the start, so a mid-run commit leaves rows that were already
+# stale when they were written. That is not hypothetical; it is why this is two
+# steps and not one.
+fuzz-periodic: fuzz-campaign fuzz-campaign-check
+	@echo "── fuzz campaign complete and accounted for ──"
+
 fuzz-campaign-check:
 	@echo "── fuzz campaign coverage ──"
 	$(MISE) cargo run --quiet --manifest-path tools/allocation-audit/Cargo.toml -- --check-campaign

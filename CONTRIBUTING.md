@@ -29,22 +29,37 @@ run the slow gates:
 make ci-full
 ```
 
-That adds Miri, AddressSanitizer, a bounded fuzz smoke run across every fuzz
-target, and the fuzz campaign itself. It runs only on `aarch64-apple-darwin` —
-the pinned nightly is not installed elsewhere.
+That adds Miri, AddressSanitizer, and a bounded fuzz smoke run across every
+fuzz target. It runs only on `aarch64-apple-darwin` — the pinned nightly is not
+installed elsewhere. Budget about twenty minutes, most of it Miri.
 
-Budget about an hour for it. The campaign is most of that: eight targets at
-`FUZZ_SECONDS` each, forty minutes at the default 300. It appends one row per
-target to `verification/fuzz-campaign.tsv`, keyed on a fingerprint of every
-source under `crates/` and `fuzz/fuzz_targets`, and `make fuzz-campaign-check`
-then requires a row per target at the current fingerprint.
+## Fuzzing
 
-That fingerprint is why the campaign belongs to this tier and not to `make ci`:
-**any** edit under `crates/` invalidates every row at once, so the requirement
-cannot sit in front of a command you run before every commit. If you need the
-rows refreshed without the rest of ci-full, `make fuzz-campaign` writes them and
-`make fuzz-campaign-check` verifies them. Shorten a working run with
-`make fuzz-campaign FUZZ_SECONDS=60`; a release should use the default.
+The campaign is its own tier, and is **not** part of any release gate:
+
+```console
+make fuzz-periodic
+```
+
+Run it when the code a fuzz target actually exercises has changed — the parser,
+scanner, protocol, URI or serializer. Eight targets at `FUZZ_SECONDS` each,
+forty minutes at the default 300. It appends one row per target to
+`verification/fuzz-campaign.tsv` and then verifies them; shorten a working run
+with `make fuzz-campaign FUZZ_SECONDS=60`, and use the default for a run you
+intend to record.
+
+It sits outside `ci-full` because of how the rows are keyed: on a fingerprint
+of **every** source under `crates/` and `fuzz/fuzz_targets`. Any edit anywhere
+invalidates all eight targets at once, so a change to client-side session
+storage — which no fuzz target can reach — demanded a fresh parser campaign.
+A requirement paid constantly that tells you almost nothing is one that gets
+worked around rather than read.
+
+The honest cost of that: a release can go out whose parser has not been fuzzed
+at its exact fingerprint. The `code` column in the campaign log says which
+source each row covers, so what a given release is missing is answerable rather
+than assumed. `make fuzz-campaign-check` still fails when a row is missing —
+what changed is that no gate runs it for you.
 
 `make ci` is verified on `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu`;
 see `docs/guides/production-support.md` for what each platform's gate covers.
