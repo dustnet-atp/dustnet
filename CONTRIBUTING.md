@@ -23,8 +23,8 @@ run the slow gates:
 make ci-full
 ```
 
-That adds Miri, AddressSanitizer, and a bounded fuzz smoke run across all
-seven targets, and runs only on `aarch64-apple-darwin` — the pinned nightly is
+That adds Miri, AddressSanitizer, and a bounded fuzz smoke run across every
+fuzz target, and runs only on `aarch64-apple-darwin` — the pinned nightly is
 not installed elsewhere. `make ci` is verified on `aarch64-apple-darwin` and
 `x86_64-unknown-linux-gnu`; see `docs/guides/production-support.md` for what each
 platform's gate covers.
