@@ -5,9 +5,8 @@
 ██║  ██║██║   ██║╚════██║   ██║   ██║╚██╗██║██╔══╝     ██║
 ██████╔╝╚██████╔╝███████║   ██║   ██║ ╚████║███████╗   ██║
 ╚═════╝  ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚══════╝   ╚═╝
+          ANSI TERMINAL PROTOCOL NETWORK * Est. 2026
 ```
-
-**ANSI · TERMINAL · PROTOCOL · NETWORK** — Est. 2026
 
 **[dustnet.io](https://dustnet.io) | `atp://dustnet.io`**
 
