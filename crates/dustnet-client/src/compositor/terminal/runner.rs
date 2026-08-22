@@ -5107,7 +5107,12 @@ async fn relayout_panels_for(
     if let Some(runtime) = next_anim_rt {
         page.anim_rt = runtime;
     } else if let Some(transition) = next_transition {
-        debug_assert!(page.anim_rt.try_push_transition(transition));
+        // The push must happen outside the assertion: `debug_assert!` does not
+        // evaluate its argument in release builds, so an install written as the
+        // asserted expression silently never runs and the panel state swaps
+        // with no transition at all.
+        let installed = page.anim_rt.try_push_transition(transition);
+        debug_assert!(installed, "panel-transition slot was preflighted");
     }
 
     state.content_height = page.buf.height;

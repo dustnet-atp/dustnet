@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Panel entrance transitions animate in release builds. A `[state]` carrying
+  `transition="draw-out"` and friends built its adapter, costed it against the
+  governor, and then discarded it, so every authored box appeared fully formed
+  instead of drawing itself in. The install was written as the argument of a
+  `debug_assert!`, which does not evaluate its argument once assertions are
+  compiled out -- so the effect was invisible in the debug profile the test gate
+  runs, and only the shipped binary was affected. The page-level transitions a
+  `[link transition=...]` names were never installed this way and always worked,
+  which is what made the difference look like a property of the transition kind.
+
 ## 0.2.0 - 2026-08-22
 
 The first release of the 0.2 line that is not a pre-release, so
