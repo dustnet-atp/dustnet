@@ -1,0 +1,168 @@
+# Publishes the client container image to GHCR.
+#
+# This is the only hosted job in the repository, and that is deliberate. The
+# verification gate runs locally on macOS — `make ci` — because macOS runners
+# bill at a 10x multiplier and every hosted run of the gate sat queued while
+# this repository was private on a free plan. Nothing here changes that
+# argument: this workflow is Linux, runs on a tag rather than a push, and
+# builds an artefact that cannot be produced locally in one step, because no
+# single machine is both amd64 and arm64.
+#
+# GHCR needs no secret. The built-in GITHUB_TOKEN can write packages owned by
+# this repository, so there is no PAT to provision, store, or rotate.
+name: publish-image
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/dustnet-atp/dustnet
+
+jobs:
+  # Cargo.toml is the single source of the version; the tag is checked against
+  # it rather than trusted. A tag that disagrees with the workspace version
+  # would publish an image whose name matches no release, which is the same
+  # class of drift that left the README advertising 0.2.0-alpha.4 after the
+  # bump to 0.2.0.
+  #
+  # It is its own job, ahead of the builds, so a mismatch costs seconds rather
+  # than two full Rust compiles: `needs: version` means neither architecture
+  # starts until the tag and the workspace agree.
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      latest: ${{ steps.resolve.outputs.latest }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: resolve
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test -n "$version" || { echo "no version in Cargo.toml"; exit 1; }
+          if [ "${{ github.ref_type }}" = tag ] \
+             && [ "${{ github.ref_name }}" != "v$version" ]; then
+            echo "tag ${{ github.ref_name }} does not match Cargo.toml v$version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # A hyphen means a pre-release. Cargo already skips those for a bare
+          # requirement; `latest` has no such rule, so moving it to a
+          # pre-release would hand every README reader an alpha unasked.
+          case "$version" in
+            *-*) echo "latest=false" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "latest=true"  >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "publishing $version"
+
+  # One runner per architecture, each building natively. The alternative is
+  # buildx with QEMU on a single amd64 runner, which emulates the whole arm64
+  # rustc run and takes several times longer for an identical result.
+  #
+  # Each job pushes an untagged manifest addressed only by digest; the merge
+  # job below is what attaches the human-readable tags. Tagging here instead
+  # would mean two jobs racing to own the same tag, and the loser's
+  # architecture silently vanishing from it.
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          # Scoped per architecture: one shared scope would have the two
+          # runners evicting each other's layers on every release.
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Record digest
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          digest='${{ steps.build.outputs.digest }}'
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          retention-days: 1
+          if-no-files-found: error
+
+  # Assembles the two digests into one multi-arch manifest list and puts the
+  # tags on it, so `docker run ghcr.io/dustnet-atp/dustnet` resolves to the
+  # right architecture without the caller naming one.
+  merge:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest list
+        working-directory: /tmp/digests
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          LATEST: ${{ needs.version.outputs.latest }}
+        run: |
+          set -euo pipefail
+          tags="--tag ${IMAGE}:${VERSION}"
+          if [ "$LATEST" = true ]; then
+            tags="$tags --tag ${IMAGE}:latest"
+          fi
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $tags \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Verify both architectures are present
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+          for arch in amd64 arm64; do
+            docker buildx imagetools inspect --raw "${IMAGE}:${VERSION}" \
+              | grep -q "\"architecture\": *\"$arch\"" \
+              || { echo "manifest list is missing linux/$arch"; exit 1; }
+          done

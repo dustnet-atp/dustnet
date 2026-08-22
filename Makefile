@@ -6,15 +6,25 @@ SHELL := /bin/bash
 SITE_DIR ?=
 SITE_BUILD := target/site
 
-.PHONY: ci ci-preflight ci-publish-dryrun install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
+.PHONY: ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
 
 # ─── Local verification gate ─────────────────────────────────
 #
-# All verification runs locally on macOS. There is no hosted CI: the
+# All verification runs locally on macOS. The gate is not hosted: the
 # GitHub Actions workflow was removed because the account does not pay
 # for Actions minutes, so every run sat queued and no gate was ever
 # actually enforced. A local gate that runs is worth more than a hosted
 # one that does not.
+#
+# The repository is public now, so standard runners are unmetered and that
+# argument is weaker than it was — but only for Linux. The gate is macOS, and
+# macOS runners still bill at 10x, so moving it hosted is a decision in its
+# own right rather than a consequence of going public.
+#
+# One hosted workflow does exist: .github/workflows/publish-image.yml builds
+# the container image on a tag. It is Linux, it runs a few times a year, and
+# it produces the one artefact no single machine can: a manifest list covering
+# both amd64 and arm64.
 #
 #   make test      fast inner loop — use while working          (~10s)
 #   make ci        the full gate — run before every commit       (minutes)
@@ -229,6 +239,80 @@ ci-publish-dryrun:
 	$(MISE) CARGO_TARGET_DIR=target/publish-verify \
 		cargo publish --dry-run --locked --workspace
 	@echo "── publish dry run: all five package cleanly ──"
+
+# ─── Container image ─────────────────────────────────────────
+#
+# The README tells everyone to run the client in Docker, because the client
+# renders untrusted content from strangers into your terminal and a container
+# is the boundary. That advice only holds while Docker is also the *fastest*
+# path. Building from the Dockerfile compiles the workspace inside
+# rust:1.94-slim, which is minutes; a published image is one pull. Recommending
+# the slowest route is how you get people running it on the host instead.
+#
+# GHCR rather than Docker Hub. A README command is an anonymous pull, and
+# Docker Hub rate-limits anonymous pulls per IP, so the documented command
+# fails for readers behind a shared address. GHCR imposes no such limit on
+# public images and needs no account that is not already this repository's.
+#
+# Two architectures because this is a terminal application people run on their
+# own machine, and a lot of those machines are Apple Silicon.
+REGISTRY   ?= ghcr.io
+IMAGE_NAME ?= dustnet-atp/dustnet
+PLATFORMS  ?= linux/amd64,linux/arm64
+IMAGE      := $(REGISTRY)/$(IMAGE_NAME)
+
+# Read out of Cargo.toml, never restated. The README carried a hand-written
+# `--version 0.2.0-alpha.4` that outlived the bump to 0.2.0, and dustnet-www
+# still tells people to `cargo install --path crates/dustnet-cli` for a crate
+# that has never existed under that name. Both were copies nobody rebuilt. An
+# image tag is a copy too, so it is derived here.
+VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+
+# Single architecture, loaded into the local daemon so it can actually be run.
+# `buildx --load` cannot accept a multi-platform result: the daemon's image
+# store holds one manifest, not a list. That is why this target and
+# docker-check are separate rather than one parameterised target.
+docker-image:
+	@echo "── build $(IMAGE):$(VERSION) for this machine ──"
+	docker buildx build --load -t $(IMAGE):$(VERSION) -t dustnet:latest .
+	@echo "── built; run it with: make docker-run ──"
+
+docker-run: docker-image
+	docker run --rm -it -v "$(HOME)/.config/dustnet:/root/.config/dustnet" \
+		dustnet:latest connect atp://dustnet.io
+
+# Both architectures, discarded. This is the pre-release check: a cross build
+# breaks for reasons a native build never shows, and finding that out during a
+# tag push means a half-published manifest.
+docker-check:
+	@echo "── cross build $(PLATFORMS), no push ──"
+	docker buildx build --platform $(PLATFORMS) --output=type=cacheonly .
+	@echo "── both architectures build ──"
+
+# Publishing by hand, for when the workflow is not the thing doing it.
+#
+# The clean-tree requirement is not decoration. `docker build` copies the
+# working tree, not a commit, so an image built from a dirty tree corresponds
+# to no revision anyone can check out — and it would carry a version tag
+# claiming otherwise. `ci-publish-dryrun` refuses `--allow-dirty` for the same
+# reason; this is that stance applied to the other publish path.
+#
+# `latest` moves only for a real release. Cargo treats a hyphen as a
+# pre-release and skips it for a bare requirement; `latest` has no such rule,
+# so pointing it at 0.3.0-alpha.1 would hand every README reader a pre-release
+# they did not ask for.
+docker-publish:
+	@test -z "$$(git status --porcelain)" \
+		|| { echo "  working tree is dirty; an image built from it matches no commit"; exit 1; }
+	@echo "── push $(IMAGE):$(VERSION) for $(PLATFORMS) ──"
+	@case "$(VERSION)" in \
+		*-*) echo "  pre-release: tagging $(VERSION) only, not latest"; \
+		     docker buildx build --platform $(PLATFORMS) --push \
+		       -t $(IMAGE):$(VERSION) . ;; \
+		*)   docker buildx build --platform $(PLATFORMS) --push \
+		       -t $(IMAGE):$(VERSION) -t $(IMAGE):latest . ;; \
+	esac
+	@echo "── pushed $(IMAGE):$(VERSION) ──"
 
 ci-docs:
 	@echo "── doctests, docs, locked release build ──"
