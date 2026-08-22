@@ -10,9 +10,6 @@
 
 **[dustnet.io](https://dustnet.io) | `atp://dustnet.io`**
 
-DUSTNET is home to a network of sites built on the ANSI Terminal Protocol.
-Build whatever you want. Make it look like nothing else.
-
 This repository is the reference implementation: the client, the server, and
 the specification for ATP and AML.
 
@@ -22,13 +19,8 @@ DUSTNET is an art project. A throwback to the days of the BBS, 2400 baud,
 blinking lights, the modem screaming into the darkness, ANSI art unrolling one
 line at a time.
 
-It is an experiment. Is it secure? Probably not. Run your client in a
-container, if you run a site, isolate it. Don't submit anything you want to
-stay secret. Hold on to the seat of your pants and throw yourself head first
-through your monitor into this network at the edge of the internet.
-
-Stand up a site and add it to the HUB. Argue on the NEWS board. Leave
-something behind for the next spec of DUST.
+Deploy a site and add it to the HUB. Argue on the NEWS board. Leave something
+behind. This is the network where the dust gathers.
 
 Sites serve declarative ANSI Markup Language (AML) over the TLS-based ANSI
 Terminal Protocol (ATP), and the client lays pages out as terminal cells. A
