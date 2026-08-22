@@ -140,7 +140,12 @@ impl GovernedSessionStore {
         directive: &SessionDirective,
     ) -> Result<(), GovernedSessionError> {
         if matches!(directive, SessionDirective::Clear { .. }) {
-            debug_assert!(self.inner.apply_directive(origin, directive));
+            // Outside the assertion on purpose: `debug_assert!` does not
+            // evaluate its argument in release builds, so applying the clear
+            // here would leave the session in the store — and
+            // `persist_after_clear` would then write it straight back to disk.
+            let applied = self.inner.apply_directive(origin, directive);
+            debug_assert!(applied, "a clear directive always mutates the store");
             self.reconcile_after_shrink();
             self.persist_after_clear();
             return Ok(());

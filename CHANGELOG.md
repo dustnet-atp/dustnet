@@ -13,6 +13,12 @@
   runs, and only the shipped binary was affected. The page-level transitions a
   `[link transition=...]` names were never installed this way and always worked,
   which is what made the difference look like a property of the transition kind.
+- `:sessions clear` clears sessions in release builds. The directive was applied
+  to the store inside a `debug_assert!` -- the same mistake, in a second place --
+  so with assertions compiled out the sessions stayed in memory and
+  `persist_after_clear` then wrote them back to the store file the clear was
+  meant to empty. 0.2.0 shipped that path and its changelog entry claiming
+  `:sessions clear` deletes the file; on a release binary neither happened.
 
 ## 0.2.0 - 2026-08-22
 
