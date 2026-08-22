@@ -1,6 +1,6 @@
 [package]
 name = "dustnetd"
-version = "0.2.0-alpha.3"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "Static ATP server daemon: the runnable form of dustnet-server"
@@ -18,8 +18,8 @@ path = "src/main.rs"
 clap = { version = "4.6.6", features = ["derive"] }
 clap_complete = "4.6.9"
 clap_mangen = "0.3.3"
-dustnet-core = { path = "../dustnet-core", version = "=0.2.0-alpha.3" }
-dustnet-server = { path = "../dustnet-server", version = "=0.2.0-alpha.3" }
+dustnet-core = { path = "../dustnet-core", version = "=0.2.0" }
+dustnet-server = { path = "../dustnet-server", version = "=0.2.0" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }

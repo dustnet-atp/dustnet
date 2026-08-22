@@ -1,15 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-08-22
 
-### Changed
+The first release of the 0.2 line that is not a pre-release, so
+`cargo install dustnet --locked` finds it without being told a version — a
+`*` requirement never matches a pre-release, which is why every earlier install
+line had to name one. Nothing was yanked to get here: crates.io went from
+0.2.0-alpha.2 straight to this, because 0.2.0-alpha.3 was committed in git and
+described below but never published to the registry — so the install line the
+README carried for it never worked.
 
-- A login now survives restarting the client, where through alpha.3 closing it
-  was a logout. `docs/spec/07-security.md` claimed ephemeral client storage
-  unconditionally and now claims it for `remember-sessions = false`, which
-  restores the old behaviour exactly. The trade is stated there rather than
-  implied: a stored token is one an attacker with read access to the account
-  can take, against a re-authentication cost every user paid on every launch.
+Everything alpha.3 got wrong about staying logged in. A login was accepted and
+then rendered as anonymous, a reload returned to the form, and closing the
+client threw the session away — three separate causes in three layers, each
+enough on its own to make a working login look broken.
 
 ### Added
 
@@ -21,6 +25,57 @@
   directives are. A password is never stored under any setting. `:sessions`
   says which mode is in effect, and `:sessions clear` now deletes the file as
   well as the in-memory sessions.
+- `page-path`, a capability under which a PAGE names the path it represents.
+  A submission is answered with the page its handler chose — a login submitted
+  to `/login` is answered with the front page — and until now the client kept
+  the submitted path as its location, so a reload after a login returned to the
+  form. REDIRECT cannot stand in: `validate_redirect_body` forbids metadata, so
+  a redirect cannot also issue the session a login grants. The field names an
+  absolute same-origin path with an optional query and never a URI — a value
+  carrying a scheme, beginning `//`, or containing a fragment is a malformed
+  body, since each would turn a relabelling into a cross-origin navigation that
+  skipped the redirect limit and the fresh HELLO a real redirect performs. A
+  `Path` that cannot be used is ignored rather than fatal.
+
+### Changed
+
+- A login now survives restarting the client, where through alpha.3 closing it
+  was a logout. `docs/spec/07-security.md` claimed ephemeral client storage
+  unconditionally and now claims it for `remember-sessions = false`, which
+  restores the old behaviour exactly. The trade is stated there rather than
+  implied: a stored token is one an attacker with read access to the account
+  can take, against a re-authentication cost every user paid on every launch.
+
+### Fixed
+
+- A link to a foreign scheme is refused instead of being resolved as a path.
+  `resolve` special-cased `atp://` and treated anything else not `/`-rooted as
+  a relative reference, so an `https://example.com` href became
+  `atp://current-host/https://example.com` — a nonsensical request, and one
+  that told the current site which external link its reader had clicked. RFC
+  3986's rule decides it now, by the position of the colon relative to the
+  first slash, which also catches `mailto:someone` while leaving
+  `sub/odd:name.aml` a path. Activating such a link used to fail silently,
+  which made Enter look like a dead key; it now says which scheme it refused.
+- A response to a submission is rendered for the identity the handler granted.
+  `serve_input` resolved the token the request *arrived* with, which at login
+  time is nothing, so the frame that issued a session also drew the logged-out
+  page. The granted token goes back through `SessionResolver` — the same
+  chokepoint a GET uses — so nobody's word is taken for it, and a handler
+  claiming a session the resolver rejects still renders anonymously.
+- A refusal reason is bounded to 200 characters. A handler put a multi-line
+  SMTP diagnostic into a refusal, that string became the ERROR body, and the
+  client refused to lay it out — so the real failure was hidden behind the
+  rendering failure it caused. Trimmed at the boundary rather than in each
+  handler, and logged in full first so an operator keeps the diagnostic.
+- The capability gate checks every flag a PAGE sets, not the first that
+  matched. It was one guarded match arm per flag, so a PAGE claiming live
+  regions *and* a session was admitted on `live-updates` alone.
+- The two readers of the PAGE metadata block agree. `decode_body` and
+  `validate_page_body` read one wire format on two paths, and
+  `page_validation_matches_decoding` now compares them across a corpus crossed
+  with all sixteen flag combinations rather than trusting a comment. Both also
+  refuse a flag whose field is absent, so a message has one encoding.
 
 ## 0.2.0-alpha.3 - 2026-08-22
 

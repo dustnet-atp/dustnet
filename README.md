@@ -1,4 +1,13 @@
-# Dustnet
+```
+██████╗ ██╗   ██╗███████╗████████╗███╗   ██╗███████╗████████╗
+██╔══██╗██║   ██║██╔════╝╚══██╔══╝████╗  ██║██╔════╝╚══██╔══╝
+██║  ██║██║   ██║███████╗   ██║   ██╔██╗ ██║█████╗     ██║
+██║  ██║██║   ██║╚════██║   ██║   ██║╚██╗██║██╔══╝     ██║
+██████╔╝╚██████╔╝███████║   ██║   ██║ ╚████║███████╗   ██║
+╚═════╝  ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚══════╝   ╚═╝
+```
+
+**[dustnet.io](https://dustnet.io) | `atp://dustnet.io`**
 
 An experimental terminal-native network. Sites serve declarative ANSI Markup
 Language (AML) over the TLS-based ANSI Terminal Protocol (ATP), and the
@@ -13,7 +22,7 @@ The premise: what if the web had been built for terminals?
 ### From crates.io
 
 ```console
-cargo install dustnet --version 0.2.0-alpha.3 --locked
+cargo install dustnet --locked
 dustnet connect atp://dustnet.io
 ```
 

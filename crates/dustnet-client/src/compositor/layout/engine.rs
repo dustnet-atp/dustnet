@@ -3324,6 +3324,13 @@ mod tests {
     /// orders of magnitude. Real cost is ~15 ms unoptimised, so the 5 s bound
     /// has ~300x headroom for a loaded machine while still catching the only
     /// regression it is here to catch.
+    ///
+    /// Skipped under Miri, which interprets rather than executes: the same
+    /// layout measured 0.027 s natively and 198 s under Miri, a ~7,000x
+    /// interpretation overhead that says nothing about the memoisation. The
+    /// bound cannot be widened to cover both, because a bound loose enough for
+    /// Miri is looser than the regression it exists to catch.
+    #[cfg_attr(miri, ignore = "wall-clock bound is meaningless under interpretation")]
     #[test]
     fn layout_at_max_depth_completes_within_time_bound() {
         // 31 nested boxes is the deepest *conforming* document: the parser
