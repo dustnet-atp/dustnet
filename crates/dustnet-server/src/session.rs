@@ -104,6 +104,21 @@ impl SessionChange {
         self.directives.is_empty()
     }
 
+    /// The token this change issues, if it issues one.
+    ///
+    /// Deliberately narrow: the token is already in the caller's hand here — it
+    /// put it there — so exposing it reveals nothing new. It exists so a caller
+    /// can act on the session it just granted without threading the token
+    /// separately through its own return values.
+    pub fn token(&self) -> Option<&str> {
+        self.directives
+            .iter()
+            .find_map(|directive| match directive {
+                SessionDirective::Set { token, .. } => Some(token.as_str()),
+                SessionDirective::Clear { .. } => None,
+            })
+    }
+
     /// Whether this change clears the session, and so should revoke the token
     /// that was presented.
     pub(crate) fn clears(&self) -> bool {
@@ -146,6 +161,13 @@ mod tests {
             SessionDirective::Clear { scope } => assert_eq!(scope, "/"),
             other => panic!("expected Clear, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn the_issued_token_is_readable_and_a_clear_has_none() {
+        assert_eq!(SessionChange::set("abc", "/", 1).token(), Some("abc"));
+        assert_eq!(SessionChange::clear("/").token(), None);
+        assert_eq!(SessionChange::none().token(), None);
     }
 
     #[test]
