@@ -38,6 +38,16 @@
 /// cost of a submission is bounded in both bytes and elements.
 const MAX_FIELDS: usize = 64;
 
+/// Longest refusal reason that reaches the client.
+///
+/// A reason is a sentence for a person to read, and the client has to lay it
+/// out. A handler that puts a transport diagnostic in one — a multi-line SMTP
+/// error with a support URL, say — produced a page the client refused to render
+/// at all, reporting "page exceeded client resource budget" and hiding the
+/// actual problem. Bounding it here means no handler can do that, rather than
+/// every handler having to remember not to.
+pub(crate) const MAX_REASON: usize = 200;
+
 /// The decoded fields of one submission, in the order they were sent.
 #[derive(Debug, Default, Clone)]
 pub struct FormFields {
@@ -181,6 +191,9 @@ pub enum InputOutcome {
         session: crate::session::SessionChange,
     },
     /// Refused, with a reason to show the person who submitted it.
+    ///
+    /// A short sentence for a person to read. Anything longer is truncated
+    /// before it reaches the wire — see [`MAX_REASON`].
     Rejected(String),
 }
 
@@ -223,6 +236,18 @@ impl InputOutcome {
 /// Handles form submissions for a site.
 pub trait InputHandler: Send + Sync {
     fn handle(&self, request: &InputRequest<'_>) -> InputOutcome;
+}
+
+/// Trim a refusal reason to something a client can render.
+///
+/// Truncated on a character boundary, and marked so the reader can tell they are
+/// seeing part of a sentence rather than a badly-worded whole one.
+pub(crate) fn short_reason(reason: &str) -> String {
+    if reason.chars().count() <= MAX_REASON {
+        return reason.to_string();
+    }
+    let kept: String = reason.chars().take(MAX_REASON - 1).collect();
+    format!("{kept}…")
 }
 
 /// Split a form action into its path and query.
@@ -295,6 +320,32 @@ mod tests {
     }
 
     /// A form action carries which thing it acts on as a query.
+    /// A handler that puts a transport diagnostic in a refusal must not be able
+    /// to hand the client something it cannot lay out.
+    #[test]
+    fn an_over_long_reason_is_truncated() {
+        let short = "a title is required";
+        assert_eq!(short_reason(short), short);
+
+        // The shape that caused it: a real SMTP 421 with a support URL.
+        let diagnostic = "could not send mail: transient error (421): 4.7.0 Try again \
+                          later, closing connection. (EHLO) For more information, go to \
+                          https://support.google.com/a/answer/3221692 \
+                          5b1f17b1804b1-499c2fb02ecsm5772355e9.4 - gsmtp";
+        let trimmed = short_reason(diagnostic);
+        assert!(trimmed.chars().count() <= MAX_REASON);
+        assert!(trimmed.ends_with('…'), "{trimmed}");
+    }
+
+    /// Truncation must not split a character.
+    #[test]
+    fn truncation_lands_on_a_character_boundary() {
+        let reason = "é".repeat(MAX_REASON * 2);
+        let trimmed = short_reason(&reason);
+        assert!(trimmed.chars().count() <= MAX_REASON);
+        assert!(trimmed.is_char_boundary(trimmed.len()));
+    }
+
     #[test]
     fn an_action_query_is_split_off() {
         assert_eq!(split_query("/index?reply=12"), ("/index", Some("reply=12")));

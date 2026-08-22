@@ -997,8 +997,10 @@ async fn serve_input(
         crate::input::InputOutcome::Rejected(reason) => {
             // Logged at the same level as an acceptance. A submission refused
             // is as much a thing an operator wants to see as one taken.
+            // Logged in full, sent trimmed: the operator wants the diagnostic
+            // and the reader wants a sentence they can actually see.
             tracing::info!(path, reason = %reason, "submission refused");
-            send_error(stream, 400, &reason).await?;
+            send_error(stream, 400, &crate::input::short_reason(&reason)).await?;
             Ok(())
         }
     }
