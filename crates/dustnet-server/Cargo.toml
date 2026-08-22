@@ -1,6 +1,6 @@
 [package]
 name = "dustnet-server"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "MIT"
 description = "ATP static-server library; install dustnetd to run a server"
@@ -11,7 +11,7 @@ keywords = ["atp", "aml", "server", "static", "terminal"]
 categories = ["network-programming", "web-programming::http-server"]
 
 [dependencies]
-dustnet-core = { path = "../dustnet-core", version = "=0.2.0" }
+dustnet-core = { path = "../dustnet-core", version = "=0.2.1" }
 notify = "8.2.0"
 rcgen = "0.13"
 rustls = { version = "0.23", features = ["ring"] }
