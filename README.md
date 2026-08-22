@@ -13,7 +13,7 @@ The premise: what if the web had been built for terminals?
 ### From crates.io
 
 ```console
-cargo install dustnet --version 0.2.0-alpha.2 --locked
+cargo install dustnet --version 0.2.0-alpha.3 --locked
 dustnet connect atp://dustnet.io
 ```
 

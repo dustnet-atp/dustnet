@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.2.0-alpha.3 - 2026-08-22
+
+### Breaking
+
+- `include` is now a built-in AML element name, so a component cannot be called
+  `include` any more. A `[def name="include"]` that used to expand is now a
+  diagnostic. Nothing else in the element catalogue changed, and every other
+  document that parsed under alpha.2 still parses.
+- An `[include]` inside a `[def]` body is refused with the new diagnostic
+  `E052`. A component body is copied into every call site with `$attr`
+  substitution applied, and server-generated content is substituted later, so an
+  include expanded there would place generated content in a region where `$` is
+  still live. The two mechanisms are kept disjoint rather than made to interact
+  safely.
+
+### Added
+
+- `[include name=... /]`, a placeholder a server fills before a page goes on the
+  wire. The parser validates it and `dustnet check` sees it; a client renders an
+  unresolved one as nothing, deliberately not as its own literal text. See
+  `docs/spec/03-markup.md`.
+- `dustnet_core::serialize::to_aml`, which turns a token stream into AML and
+  escapes as it writes. It exists so a server generating content around
+  user-submitted data never composes markup by concatenating strings: text goes
+  in a `Token::Text` and cannot become an element, whatever it contains. The
+  property is `scan(to_aml(tokens)) == tokens`, checked by unit tests per
+  escaping context, a round trip over every AML document in the repository, and
+  the new `fuzz_serialize` target.
+- Three optional hooks on `dustnet-server`, installed through
+  `StaticServerConfig`: `with_include_resolver` fills placeholders,
+  `with_input_handler` accepts form submissions, and `with_session_resolver`
+  turns a session token into an identity. A server that installs an input
+  handler answers `INPUT` instead of refusing it with 405.
+- `SessionChange::token()`, so a caller can read back the session it just
+  issued rather than threading the token through its own return values.
+
+### Changed
+
+- `dustnetd` is unchanged. It installs none of the hooks above, so it still
+  authenticates nobody, generates no content, and refuses `INPUT` with 405 —
+  held to that by `without_a_handler_input_is_still_refused` and
+  `without_a_resolver_includes_are_served_verbatim` rather than by intent.
+  `docs/adr/0001-production-boundary.md` records why the boundary moved by three
+  traits and what stayed outside it.
+- Layout is no longer exponential in `[box]` nesting depth. A `Fit` box measured
+  its children into a throwaway buffer and then laid the same children out
+  again, which was two subtree walks per level; the measurement is now memoised
+  per node per layout pass. At the conforming maximum depth this was about
+  twenty minutes and is now under two milliseconds. Closes the only entry in
+  `verification/BUGS.md`, and `layout_at_max_depth_completes_within_time_bound`
+  is cited from the threat model in place of a test that only proved deeper
+  documents were rejected.
+- The threat model covers the server side. `verification/threat-model.json`
+  names three adversaries a server with hooks installed faces — a form
+  submitter, a session holder, and the site's own handlers — under two new
+  properties, content integrity and credential containment. Several statements
+  in `docs/spec/07-security.md` that were true of the library and are now true
+  only of `dustnetd` were corrected rather than left standing.
+- Fuzz campaign rows are keyed on a fingerprint of the fuzzed code rather than
+  on the workspace version, so a release cannot ship sources no campaign has
+  covered and a version bump no longer invalidates a campaign that is still
+  valid.
+
+### Fixed
+
+- A session token never reaches a handler. The library resolves it to an
+  identity once, at the boundary, and hands handlers the identity — a token in a
+  generated page is a session-stealing bug that looks like a rendering bug.
+  Revocation runs through `SessionResolver::revoke`, called by the server, so a
+  handler that cannot name its own session still ends exactly the one that was
+  presented.
+
 ## 0.2.0-alpha.2 - 2026-08-21
 
 ### Changed
