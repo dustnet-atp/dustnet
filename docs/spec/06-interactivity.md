@@ -7,10 +7,9 @@
 > nobody, generates nothing, and refuses `INPUT` with 405.
 >
 > Accounts, password storage, SMTP and dynamic poll handlers are *not* provided:
-> those are a site's own, built on the hooks. The prototype under
-> `examples/unsupported-social` remains unsupported and is not the way to build
-> them — its plugin dispatch and `{{marker}}` substitution are superseded by
-> `[include]` and `dustnet_core::serialize`.
+> those are a site's own, built on the hooks. Plugin dispatch and runtime
+> `{{marker}}` substitution are not the way to build them either; the supported
+> mechanisms are `[include]` and `dustnet_core::serialize`.
 
 ## Design Constraint
 
@@ -296,10 +295,9 @@ states the boundary the library does enforce: a handler is given the identity an
 never the token.
 
 The workflows below describe how such a server uses the protocol. They are not
-`dustnetd` features, and they are not the quarantined
-`examples/unsupported-social` prototype either — that remains unsupported, and
-its string-concatenation approach to generating AML is the thing
-`dustnet_core::serialize` exists to replace.
+`dustnetd` features, and they are not licence to generate AML by concatenating
+strings — that approach is the thing `dustnet_core::serialize` exists to
+replace.
 
 Authentication uses the standard form submission mechanism — there is no special login element or handshake. A site serves a login page with input fields, the user submits credentials via a normal form, and the server responds with a session token if credentials are valid.
 
@@ -401,9 +399,8 @@ the bounded endpoint file and pushes an update when its content changes.
 Server-generated dynamic content such as clocks or connection gauges requires
 a different server implementation.
 
-The unsupported social example implements that alternative with a plugin
-`polls()` hook and virtual `/__poll/{name}` endpoints. This hook and endpoint
-namespace do not exist in `dustnet-server` or `dustnetd`.
+Neither a plugin `polls()` hook nor a virtual `/__poll/{name}` endpoint
+namespace exists in `dustnet-server` or `dustnetd`.
 
 Poll subscriptions are cleared when the client navigates away (GET) or explicitly unsubscribes.
 
@@ -516,10 +513,9 @@ static `[pre]...[/pre]` AML into `target/sites`, and omits fonts, hidden state
 and raw markers from the served tree. The `site` Make target validates every
 emitted AML page; the server targets serve only that generated directory.
 
-An unsupported prototype server also used runtime `{{name}}` text markers for
-dynamic content. That mechanism is not part of the production boundary and is
-described in
-[`examples/unsupported-social/README.md`](../../examples/unsupported-social/README.md).
+Runtime `{{name}}` text markers are not part of the production boundary: no
+supported server substitutes them, and a marker left in a served page is an
+error the `site` target catches rather than a mechanism.
 
 The supported equivalent is the `[include name=... /]` element in
 [03-markup.md](03-markup.md): a placeholder the parser validates, which a server

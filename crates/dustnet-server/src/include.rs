@@ -20,8 +20,8 @@
 //! argument: user-submitted content becomes a [`Token::Text`], and
 //! [`to_aml`] is the single place that writes a `[`, so a comment body cannot
 //! become a `[form]` however hostile it is. A resolver returning `String` would
-//! put the escaping burden back on every handler, which is the mistake
-//! `examples/unsupported-social` made — see [`dustnet_core::serialize`].
+//! put the escaping burden back on every handler, which is the mistake an
+//! earlier prototype of this project made — see [`dustnet_core::serialize`].
 //!
 //! # One pass, no recursion
 //!

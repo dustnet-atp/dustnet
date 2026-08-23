@@ -3057,8 +3057,7 @@ fn unmarked_async_tests(root: &Path) -> Vec<String> {
 /// search, which `check` verifies against the discovered lint set.
 const STRUCTURAL_ENFORCED: &[(&str, &str, &str)] = &[
     (
-        "core depends on neither client nor server, and the production server \
-         cannot reach the unsupported social example",
+        "core depends on neither client nor server",
         "Makefile",
         "ci-boundaries:",
     ),

@@ -165,16 +165,16 @@ ci-clippy:
 	@echo "── clippy (warnings denied) ──"
 	$(MISE) cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-# Proves the crate graph stays partitioned: no root facade crate, core
-# depends on neither client nor server, and the production server cannot
-# reach the unsupported social example.
+# Proves the crate graph stays partitioned: no root facade crate, and core
+# depends on neither client nor server. The third subject of this check used to
+# be that the production server could not reach the social prototype; that is
+# now guaranteed by the prototype not existing.
 ci-boundaries:
 	@echo "── feature boundaries ──"
 	@test ! -e src/lib.rs
 	$(MISE) cargo check -p dustnet-core --all-targets
 	$(MISE) cargo check -p dustnet-client --all-targets
 	$(MISE) cargo check -p dustnet-server --all-targets
-	@$(MISE) ! cargo tree -p dustnet-server | grep -q unsupported-social
 	@$(MISE) ! cargo tree -p dustnet-core | grep -Eq 'dustnet-(client|server)'
 
 # Default profile, explicitly named: the gate is the one place nothing is

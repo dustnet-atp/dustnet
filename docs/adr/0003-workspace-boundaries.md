@@ -13,6 +13,9 @@ does not depend on either transport implementation. `dustnet-client` and
 server package exposes `StaticServer` and `StaticServerConfig`; it has no
 `AtpServer`, custom-handler, authentication, or plugin API.
 
-Historical social, authentication, and plugin experiments are quarantined in
-`examples/unsupported-social`, outside the default workspace. They are examples
-only and are not supported production behavior.
+Social, authentication, and plugin experiments were quarantined in
+`examples/unsupported-social`, outside the default workspace. That prototype was
+deleted on 2026-08-23 once a real application built on the hooks superseded it;
+see the third amendment to
+[0001-production-boundary.md](0001-production-boundary.md). No such experiment
+remains in the tree.

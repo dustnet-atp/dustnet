@@ -1092,9 +1092,8 @@ crates/dustnet/src/            dustnet browser/authoring CLI
 crates/dustnetd/src/           dustnetd static-server CLI
 ```
 
-The workspace has no compatibility facade. Historical authentication and
-plugin experiments live only in `examples/unsupported-social`, outside the
-default workspace; they are not part of the production server architecture.
+The workspace has no compatibility facade, and no authentication or plugin
+experiment: neither is part of the production server architecture.
 
 ## What This Enables
 

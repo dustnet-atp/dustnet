@@ -8,7 +8,6 @@ members = [
     "crates/dustnetd",
 ]
 exclude = [
-    "examples/unsupported-social",
     "effects/matrix_rain",
     "effects/typewriter",
     "effects/line_draw",

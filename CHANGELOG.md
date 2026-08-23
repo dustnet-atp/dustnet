@@ -2,6 +2,22 @@
 
 ## 0.3.1 - 2026-08-23
 
+### Removed
+
+- `examples/unsupported-social`, the quarantined social/plugin prototype, is
+  deleted, along with the `ci-boundaries` assertion that the production server
+  could not reach it -- a guarantee now held by the code not existing. It was
+  doing two jobs. As a worked example of a social application it has been
+  superseded by a real one built on the 0.3.0 hooks in its own repository, and a
+  superseded example is worse than none because someone may copy it: its plugin
+  dispatch and `{{marker}}` substitution are exactly what `[include]` and
+  `dustnet_core::serialize` replaced. As an exhibit of the string-concatenation
+  injection defect that motivated `serialize` it still had value, and losing that
+  is what this costs -- the defect is now described in `serialize.rs`,
+  `include.rs` and `docs/spec/07-security.md` instead of demonstrated. Nothing in
+  the tree now sits outside the production boundary; see the third amendment to
+  `docs/adr/0001-production-boundary.md`.
+
 ### Fixed
 
 - `layout_pre` no longer allocates. Measuring a block's alignment and height

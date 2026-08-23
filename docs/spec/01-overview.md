@@ -65,9 +65,8 @@ The repository is a virtual Cargo workspace with five production packages:
 | `dustnetd` | Static-server CLI |
 
 There is no root facade or compatibility crate. The production server API has
-no `AtpServer`, authentication, custom-handler, or plugin surface. Historical
-social/plugin code is confined to `examples/unsupported-social`, which is
-excluded from the workspace.
+no `AtpServer`, authentication, custom-handler, or plugin surface, and no social
+or plugin application exists anywhere in the workspace.
 
 ## Processing Pipeline
 

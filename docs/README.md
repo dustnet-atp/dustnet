@@ -69,8 +69,3 @@ Defects found and not yet fixed are registered in
 [`../verification/BUGS.md`](../verification/BUGS.md), each with what it costs to
 leave. That one is prose and nothing reads it; what is merely *absent* rather
 than broken is in [production-support.md](guides/production-support.md).
-
-The unsupported dynamic-server prototype — accounts, email verification,
-boards, chat, links, and the plugin and template-marker mechanism — is
-documented with the code it describes, in
-[`../examples/unsupported-social/README.md`](../examples/unsupported-social/README.md).

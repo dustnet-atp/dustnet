@@ -21,13 +21,23 @@ being mistaken for supported infrastructure.
 hooks — include resolution, form submission, session resolution — and a server
 that installs them generates content and accepts writes.
 
+**Amended a third time**, 2026-08-23: the `examples/unsupported-social`
+prototype referred to below has been deleted. It was doing two jobs with
+opposite lifecycles. As a worked example of a social application it was
+superseded by a real one built on the hooks, in its own repository, the way this
+ADR prescribes — and a superseded example is worse than none, because someone
+may copy it. As an exhibit of the string-concatenation injection defect that
+motivated `dustnet_core::serialize` it was still worth something, and that value
+is what the deletion costs: the defect is now described in `serialize.rs` and
+`docs/spec/07-security.md` rather than demonstrated. The boundary is unchanged;
+what changed is that nothing in this repository sits outside it any more.
+
 This is a narrowing of the original decision rather than a reversal of it, and
 the distinction is what the amendment turns on:
 
 - **What was rejected stays rejected.** No plugin registry, no
   operator-installed extensions, no dynamic code loading, no accounts or social
-  application inside the boundary. The `examples/unsupported-social` prototype
-  remains quarantined and unbuilt.
+  application inside the boundary.
 - **`dustnetd` did not change.** It installs no hooks, so it authenticates
   nobody, generates nothing, and still refuses `INPUT` with 405. That is held to
   tests rather than asserted: `without_a_handler_input_is_still_refused` and

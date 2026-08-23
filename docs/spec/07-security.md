@@ -10,11 +10,9 @@
 > What a hooked server does above those guarantees — who may write, password
 > storage, rate limiting — is its own, and is not described here.
 >
-> The `examples/unsupported-social` prototype — accounts, email verification
-> and plugins — is excluded from the workspace, unbuilt and untested by CI, and
-> loaded by no production binary. It is documented in
-> [its own README](../../examples/unsupported-social/README.md) and deliberately
-> not described here.
+> Accounts, email verification, password storage and plugin dispatch are
+> provided by no crate here and described nowhere in this spec. A site that
+> needs them builds them on the hooks, in its own repository.
 
 ## Threat Model
 
@@ -267,9 +265,9 @@ perfectly escaped hostile URL is still a phishing link, so scheme checking is a
 semantic control that belongs where a URL enters the system.
 
 A server that instead builds AML by concatenating strings has to remember an
-escape at every interpolation site, and the failure mode is not hypothetical: the
-quarantined prototype in `examples/unsupported-social` escapes a link's title,
-author and domain and then interpolates the submitted URL raw on the next line.
+escape at every interpolation site, and the failure mode is not hypothetical: an
+earlier prototype of this project escaped a link's title, author and domain and
+then interpolated the submitted URL raw on the next line.
 `dustnetd` generates no AML at all, having no resolver installed.
 
 ### Session Security
@@ -437,6 +435,6 @@ For `dustnetd`:
 - TLS is restricted to TLS 1.3; plaintext bind is loopback-only
 - Frame reads, writes, and connection draining have bounded deadlines
 
-For a separate dynamic server implementation, outside Dustnet's supported
-production boundary, see the checklist in
-[`examples/unsupported-social/README.md`](../../examples/unsupported-social/README.md).
+A separate dynamic server implementation, outside Dustnet's supported
+production boundary, is the site's own to secure: this section describes only
+what the hooks themselves guarantee.

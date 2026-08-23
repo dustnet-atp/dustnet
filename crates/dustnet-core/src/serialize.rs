@@ -5,9 +5,11 @@
 //! literal brackets makes every interpolation site a place where a missed
 //! escape becomes markup injection — a forged `[form action="/login"]` inside a
 //! comment body is a phishing form on an origin the reader trusts. The failure
-//! mode is not hypothetical: the quarantined prototype in
-//! `examples/unsupported-social` escaped a link's title, author and domain and
-//! then interpolated the submitted URL raw on the next line.
+//! mode is not hypothetical: an earlier prototype of this project escaped a
+//! link's title, author and domain and then interpolated the submitted URL raw
+//! on the next line. That prototype has been deleted, so the defect can only be
+//! described here and not shown -- which is the reason this module is not
+//! optional for a server that generates AML.
 //!
 //! The fix is to make the escape structural rather than remembered. Content
 //! becomes [`Token`]s — user text is a [`Token::Text`], never a fragment of
