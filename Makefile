@@ -6,7 +6,7 @@ SHELL := /bin/bash
 SITE_DIR ?=
 SITE_BUILD := target/site
 
-.PHONY: release release-check ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish docker-dustnetd docker-dustnetd-check docker-dustnetd-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check fuzz-periodic effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
+.PHONY: release release-check crosscheck-or-explain ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish docker-dustnetd docker-dustnetd-check docker-dustnetd-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check fuzz-periodic effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
 
 # ─── Local verification gate ─────────────────────────────────
 #
@@ -607,9 +607,36 @@ release: release-check
 	git push origin "v$(VERSION)"
 	@echo "── released $(VERSION): crates.io done, images building on the tag ──"
 
+# The cross build, when this machine can do one.
+#
+# Building both architectures before a tag is the check that stops a cross-only
+# failure becoming a half-published manifest, so it belongs in the release gate.
+# But it needs a buildx driver that can do multi-platform, and the default
+# `docker` driver cannot -- so on a machine without one, requiring it would block
+# every release for a reason that has nothing to do with the code. That is how a
+# check gets routed around instead of fixed.
+#
+# So the driver is probed, and the two outcomes are kept apart: where a cross
+# build is possible it runs for real and a failure is fatal; where it is not, the
+# release says so loudly rather than implying the check passed. CI builds both
+# architectures natively on the tag either way, which is the backstop -- it is
+# just later than here.
+crosscheck-or-explain:
+	@if [ "$$(docker buildx inspect 2>/dev/null | sed -n 's/^Driver: *//p')" = docker ]; then \
+		echo ""; \
+		echo "  !! cross build NOT verified: this machine's buildx uses the"; \
+		echo "     single-platform \"docker\" driver. CI builds both architectures"; \
+		echo "     natively on the tag, so a cross-only failure would surface"; \
+		echo "     there rather than here. To check locally instead:"; \
+		echo "         docker buildx create --use --driver docker-container"; \
+		echo ""; \
+	else \
+		$(MAKE) --no-print-directory docker-check docker-dustnetd-check; \
+	fi
+
 # Everything that can fail without consequence, so it all fails before anything
 # is published. Each check exists because its absence has cost something.
-release-check: ci ci-publish-dryrun docker-check docker-dustnetd-check
+release-check: ci ci-publish-dryrun crosscheck-or-explain
 	@echo "── release checks for $(VERSION) ──"
 	@test -n "$(VERSION)" || { echo "  no version in Cargo.toml"; exit 1; }
 	@test -z "$$(git status --porcelain)" \
