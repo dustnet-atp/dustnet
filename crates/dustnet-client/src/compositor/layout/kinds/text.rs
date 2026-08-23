@@ -62,27 +62,19 @@ fn layout_pre(
     let start_y = ctx.y;
     let width = ctx.width;
 
-    let run = data.runs.first();
-    let content = run.map(|r| r.text.as_str()).unwrap_or("");
-
-    let style = CellStyle {
-        fg: resolve_or_inherit(
-            run.and_then(|r| r.fg.as_ref()),
-            ctx.style.fg,
-            ctx.color_support,
-        ),
-        bg: resolve_or_inherit(
-            run.and_then(|r| r.bg.as_ref()),
-            ctx.style.bg,
-            ctx.color_support,
-        ),
-        ..ctx.style.clone()
-    };
+    // Alignment and height belong to the block, not to a run, so they are
+    // measured over the concatenation of every run. Taking them from the first
+    // run alone is what this used to do, and with more than one run it truncated
+    // the block to whatever came before the first styled span.
+    let mut whole = String::new();
+    for run in &data.runs {
+        whole.push_str(&run.text);
+    }
 
     let block_offset = match data.align {
         Alignment::Left => 0u16,
         Alignment::Center | Alignment::Right => {
-            let max_w = content
+            let max_w = whole
                 .split('\n')
                 .map(|l| crate::compositor::layout::text::display_width(l, ctx.wcfg) as u16)
                 .max()
@@ -96,23 +88,52 @@ fn layout_pre(
     };
 
     scene.allocate_buffer(node_id, width.max(1), 1);
-    let line_count = content.split('\n').count() as u16;
+    let line_count = whole.split('\n').count() as u16;
     let mut local_y: u16 = 0;
     if let Some(text_buf) = scene.layout_buffer_mut(node_id) {
         text_buf.ensure_height(line_count.max(1));
-        for line in content.split('\n') {
-            text_buf.ensure_height(local_y.saturating_add(1));
-            engine::put_str_clipped(
-                text_buf,
-                block_offset,
-                local_y,
-                line,
-                &style,
-                width,
-                ctx.wcfg,
-            );
-            local_y = local_y.saturating_add(1);
+
+        // Runs are walked in order while a cursor is carried across them, because
+        // a newline can fall anywhere -- inside a run or exactly on the boundary
+        // between two. The cursor is what makes `IE `, `GB`, ` BE` land as one
+        // line in three colours rather than three lines.
+        let mut local_x: u16 = block_offset;
+        for run in &data.runs {
+            let style = CellStyle {
+                fg: resolve_or_inherit(run.fg.as_ref(), ctx.style.fg, ctx.color_support),
+                bg: resolve_or_inherit(run.bg.as_ref(), ctx.style.bg, ctx.color_support),
+                // A run's own attribute wins; otherwise the block's is inherited,
+                // so [pre dim] still dims a span that only set a colour.
+                bold: run.bold || ctx.style.bold,
+                italic: run.italic || ctx.style.italic,
+                underline: run.underline || ctx.style.underline,
+                strikethrough: run.strikethrough || ctx.style.strikethrough,
+                dim: run.dim || ctx.style.dim,
+                blink: run.blink || ctx.style.blink,
+            };
+
+            let mut first_segment = true;
+            for segment in run.text.split('\n') {
+                if !first_segment {
+                    local_y = local_y.saturating_add(1);
+                    local_x = block_offset;
+                }
+                first_segment = false;
+                text_buf.ensure_height(local_y.saturating_add(1));
+                if segment.is_empty() {
+                    continue;
+                }
+                engine::put_str_clipped(
+                    text_buf, local_x, local_y, segment, &style, width, ctx.wcfg,
+                );
+                local_x = local_x.saturating_add(crate::compositor::layout::text::display_width(
+                    segment, ctx.wcfg,
+                ) as u16);
+            }
         }
+        // The loop above counts newlines, not lines; the last line has none
+        // after it.
+        local_y = local_y.saturating_add(1);
     }
 
     let h = local_y;

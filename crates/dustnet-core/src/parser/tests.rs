@@ -148,8 +148,8 @@ fn pre_element() {
     let doc = parse_ok("[page mode=document][pre]  art  \n  here  [/pre][/page]");
     match &doc.page.children[0] {
         Element::Pre(p) => {
-            assert!(p.content.contains("art"));
-            assert!(p.content.contains("here"));
+            assert!(p.text().contains("art"));
+            assert!(p.text().contains("here"));
         }
         _ => panic!("expected Pre"),
     }
@@ -165,6 +165,122 @@ fn heading_levels() {
             assert_eq!(h.content, "Title");
         }
         _ => panic!("expected Heading"),
+    }
+}
+
+// ─── Preformatted Styled Runs ────────────────────────────────
+
+#[test]
+fn pre_without_styling_is_one_run() {
+    let doc = parse_ok("[page mode=document][pre]plain text[/pre][/page]");
+    match &doc.page.children[0] {
+        Element::Pre(p) => {
+            assert_eq!(p.runs.len(), 1, "an unstyled block must not fragment");
+            assert_eq!(p.text(), "plain text");
+        }
+        _ => panic!("expected Pre"),
+    }
+}
+
+#[test]
+fn pre_keeps_nested_text_and_its_order() {
+    // The bug this replaced: the span and its text were both discarded and the
+    // document still validated, so "GB" simply vanished from the page.
+    let doc = parse_ok("[page mode=document][pre]IE [text fg=red]GB[/text] BE[/pre][/page]");
+    match &doc.page.children[0] {
+        Element::Pre(p) => {
+            assert_eq!(p.text(), "IE GB BE", "text must survive, in order");
+            assert_eq!(p.runs.len(), 3);
+            assert!(p.runs[0].fg.is_none());
+            assert_eq!(p.runs[1].text, "GB");
+            assert!(p.runs[1].fg.is_some(), "the span must keep its colour");
+            assert!(p.runs[2].fg.is_none());
+        }
+        _ => panic!("expected Pre"),
+    }
+}
+
+#[test]
+fn pre_nested_styling_inherits_and_flattens() {
+    let doc =
+        parse_ok("[page mode=document][pre][text bold]a[text fg=red]b[/text][/text][/pre][/page]");
+    match &doc.page.children[0] {
+        Element::Pre(p) => {
+            assert_eq!(p.text(), "ab");
+            assert_eq!(p.runs.len(), 2);
+            assert!(p.runs[0].bold && p.runs[0].fg.is_none());
+            assert!(p.runs[1].bold, "inner span inherits bold from the outer");
+            assert!(p.runs[1].fg.is_some());
+        }
+        _ => panic!("expected Pre"),
+    }
+}
+
+#[test]
+fn pre_preserves_whitespace_across_runs() {
+    // Whitespace is the reason [pre] exists; a run boundary must not eat it.
+    let doc = parse_ok("[page mode=document][pre]  a   [text dim]b[/text]   c[/pre][/page]");
+    match &doc.page.children[0] {
+        Element::Pre(p) => assert_eq!(p.text(), "  a   b   c"),
+        _ => panic!("expected Pre"),
+    }
+}
+
+#[test]
+fn pre_text_len_sums_every_run() {
+    // The per-element text budget must be the sum, or many runs each just under
+    // the limit multiply it.
+    let doc = parse_ok("[page mode=document][pre]abc[text bold]de[/text]f[/pre][/page]");
+    match &doc.page.children[0] {
+        Element::Pre(p) => assert_eq!(p.text_len(), 6),
+        _ => panic!("expected Pre"),
+    }
+}
+
+#[test]
+fn pre_runs_survive_malformed_nesting() {
+    // Stands in for a fuzz session over the new parse path, which turns what was
+    // a leaf into a container. `cargo fuzz` needs a nightly toolchain and this
+    // workspace pins stable, so the shapes a fuzzer would reach for are
+    // enumerated here instead: unbalanced closes, wrong closes, empty spans,
+    // deep nesting, spans holding only whitespace, and stray close tags.
+    //
+    // The assertion is deliberately weak -- it does not care what the runs are,
+    // only that parsing terminates and the recovered text never exceeds what
+    // went in. A parser that loops or invents characters is the failure worth
+    // catching.
+    let fragments = [
+        "[text fg=red]a[/text]",
+        "[text]",
+        "[/text]",
+        "[text bold][text dim]x",
+        "[text fg=#fff] [/text]",
+        "[box]b[/box]",
+        "a",
+        "  ",
+        "\n",
+        "[text fg=notacolour]z[/text]",
+    ];
+
+    // A fixed multiplier rather than a random seed: the same inputs every run,
+    // so a failure is reproducible from the test name alone.
+    let mut state: usize = 1;
+    for _ in 0..600 {
+        let mut body = String::new();
+        for _ in 0..6 {
+            state = state.wrapping_mul(48271).wrapping_add(11);
+            body.push_str(fragments[state % fragments.len()]);
+        }
+        let src = format!("[page mode=document][pre]{body}[/pre][/page]");
+        let result = parse_aml(&src);
+        let Some(doc) = result.document else { continue };
+        if let Some(Element::Pre(p)) = doc.page.children.first() {
+            assert!(
+                p.text().chars().count() <= body.chars().count(),
+                "recovered text grew: {body:?}"
+            );
+            assert_eq!(p.text_len(), p.text().chars().count());
+        }
     }
 }
 

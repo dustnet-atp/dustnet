@@ -401,6 +401,55 @@ async fn parity_static_text() {
     assert_frame_golden(&frames[0], "static_text");
 }
 
+/// A styled span inside `[pre]` must reach the cells with its own colour, and
+/// must not disturb the characters around it.
+///
+/// This is the acceptance test for preformatted runs. Before them the parser
+/// dropped the span and its text, so the row read "IE C" with the middle gone --
+/// and the document still validated. Asserting at cell level rather than on the
+/// AST is deliberate: the parser keeping the run is necessary and not sufficient,
+/// because `layout_pre` used to draw only the first run and truncated the block
+/// at the first span.
+#[cfg_attr(miri, ignore = "tokio runtime needs kqueue, which Miri cannot emulate")]
+#[tokio::test]
+async fn pre_styled_run_reaches_the_cells() {
+    let aml = "[page mode=document title=\"t\"]\
+               [pre fg=white]AA[text fg=red]BB[/text]CC[/pre][/page]";
+    let frames = capture_frames(aml, 40, 6, 0).await;
+    let grid = &frames[0].grid;
+
+    // Find the row holding the block, wherever the document flow put it.
+    let mut row = None;
+    for y in 0..grid.height {
+        if (0..6).all(|x| grid.get(x, y).is_some_and(|c| c.ch != ' ')) {
+            row = Some(y);
+            break;
+        }
+    }
+    let y = row.expect("the preformatted row should be somewhere in the frame");
+
+    let chars: String = (0..6)
+        .filter_map(|x| grid.get(x, y).map(|c| c.ch))
+        .collect();
+    assert_eq!(chars, "AABBCC", "no run may be dropped or reordered");
+
+    let fg_at = |x: u16| grid.get(x, y).and_then(|c| c.style.fg);
+    assert_eq!(fg_at(0), fg_at(1), "the unstyled run is one colour");
+    assert_eq!(fg_at(2), fg_at(3), "the styled span is one colour");
+    assert_eq!(fg_at(4), fg_at(5), "the trailing run is one colour");
+    assert_ne!(
+        fg_at(1),
+        fg_at(2),
+        "the span must differ from the text before it"
+    );
+    assert_ne!(
+        fg_at(3),
+        fg_at(4),
+        "and the text after it must return to the block's colour"
+    );
+    assert_eq!(fg_at(0), fg_at(5), "both unstyled runs inherit the block");
+}
+
 #[cfg_attr(miri, ignore = "tokio runtime needs kqueue, which Miri cannot emulate")]
 #[tokio::test]
 async fn parity_panel_static() {

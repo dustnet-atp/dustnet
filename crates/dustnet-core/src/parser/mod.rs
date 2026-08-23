@@ -120,6 +120,22 @@ fn try_copy_string(value: &str, failed: &mut bool) -> String {
     owned
 }
 
+/// Whether two runs would render identically, ignoring their text.
+///
+/// Used to merge adjacent runs. Without it every text token becomes its own run,
+/// and an unstyled block -- which is nearly every block -- turns into as many
+/// runs as the scanner happened to emit tokens.
+fn same_style(a: &PreRun, b: &PreRun) -> bool {
+    a.fg == b.fg
+        && a.bg == b.bg
+        && a.bold == b.bold
+        && a.italic == b.italic
+        && a.underline == b.underline
+        && a.strikethrough == b.strikethrough
+        && a.dim == b.dim
+        && a.blink == b.blink
+}
+
 fn trim_owned_string(mut value: String) -> String {
     // `start` must be measured against the already-truncated value: trailing
     // and leading whitespace overlap when the content is entirely whitespace,
@@ -1126,14 +1142,14 @@ impl Parser {
             }
         }
 
-        let content = if self_closing {
-            String::new()
+        let runs = if self_closing {
+            Vec::new()
         } else {
-            self.collect_text_content("pre")
+            self.collect_styled_runs("pre")
         };
 
         Element::Pre(PreElement {
-            content,
+            runs,
             fg,
             bg,
             align,
@@ -2346,6 +2362,104 @@ impl Parser {
     // ─── Helpers ─────────────────────────────────────────────
 
     /// Collect all text content inside a tag, discarding child tags.
+    /// Collect a preformatted block as styled spans in source order.
+    ///
+    /// The plain-text collector below skips nested tags *and their content*,
+    /// which for a block that can carry styling means a `[text]` span silently
+    /// disappears from the page while the document still validates. Nothing
+    /// reports it, because from the parser's point of view nothing went wrong.
+    ///
+    /// Order is why this cannot reuse the `content` + `children` shape that
+    /// `[text]` uses: that shape loses the interleaving between an element's own
+    /// text and its children, which flowing text can absorb and a preformatted
+    /// grid cannot. `IE· `, `GB`, `· BE·` has to stay in that sequence.
+    ///
+    /// Nested styling inherits and flattens: `[text bold][text fg=red]x[/text]`
+    /// yields one bold red run. Only `[text]` may nest here -- anything else is
+    /// reported rather than dropped, which is the behaviour the plain collector
+    /// was missing.
+    fn collect_styled_runs(&mut self, until_close: &str) -> Vec<PreRun> {
+        let mut runs: Vec<PreRun> = Vec::new();
+        let mut stack: Vec<PreRun> = Vec::new();
+
+        loop {
+            match self.current_owned() {
+                Token::Eof => break,
+                Token::CloseTag { name } if name == until_close && stack.is_empty() => {
+                    self.advance();
+                    break;
+                }
+                Token::CloseTag { .. } => {
+                    self.advance();
+                    stack.pop();
+                }
+                Token::Text(ref text) => {
+                    let style = stack.last().cloned().unwrap_or_default();
+                    // Merged with the run before it when the styling matches, so
+                    // that adjacent text tokens do not become separate runs and a
+                    // block with no styling stays exactly one run.
+                    match runs.last_mut() {
+                        Some(last) if same_style(last, &style) => last.text.push_str(text),
+                        _ => {
+                            let mut run = style;
+                            run.text.push_str(text);
+                            runs.push(run);
+                        }
+                    }
+                    self.advance();
+                }
+                Token::OpenTag {
+                    name,
+                    ref attributes,
+                    self_closing,
+                } => {
+                    if name != "text" {
+                        self.error_fmt(
+                            "E020",
+                            format_args!(
+                                "[{name}] is not allowed inside [{until_close}]; only [text] may nest"
+                            ),
+                        );
+                        self.advance();
+                        if !self_closing {
+                            self.skip_until_close(&name);
+                        }
+                        continue;
+                    }
+                    let mut style = stack.last().cloned().unwrap_or_default();
+                    style.text.clear();
+                    for attr in attributes {
+                        match attr.name.as_str() {
+                            "fg" => style.fg = self.parse_color_attr(&attr.value, "text"),
+                            "bg" => style.bg = self.parse_color_attr(&attr.value, "text"),
+                            "bold" => style.bold = true,
+                            "italic" => style.italic = true,
+                            "underline" => style.underline = true,
+                            "strikethrough" => style.strikethrough = true,
+                            "dim" => style.dim = true,
+                            "blink" => style.blink = true,
+                            _ => {
+                                self.warning_fmt(
+                                    "W002",
+                                    format_args!(
+                                        "unknown attribute \"{}\" on [text] inside [{until_close}]",
+                                        attr.name
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    self.advance();
+                    if !self_closing {
+                        stack.push(style);
+                    }
+                }
+            }
+        }
+
+        runs
+    }
+
     fn collect_text_content(&mut self, until_close: &str) -> String {
         let mut content = String::new();
 

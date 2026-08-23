@@ -508,13 +508,29 @@ fn build_element_inner(cx: &mut BuildCtx, element: &Element) -> Option<NodeId> {
 
         Element::Text(t) => Some(build_text(cx, t)),
         Element::Pre(p) => {
+            // One scene run per parsed run, with the block's own fg/bg standing
+            // in for spans that set neither. This vector was always here and was
+            // always handed exactly one element; carrying the spans through to it
+            // is the whole of the change -- the layout and the cell buffer could
+            // already draw per-run colour, there was simply no way to say it in
+            // the markup.
+            let runs = p
+                .runs
+                .iter()
+                .map(|r| TextRun {
+                    text: r.text.clone(),
+                    fg: color_name(r.fg.as_ref().or(p.fg.as_ref())),
+                    bg: color_name(r.bg.as_ref().or(p.bg.as_ref())),
+                    bold: r.bold,
+                    italic: r.italic,
+                    underline: r.underline,
+                    strikethrough: r.strikethrough,
+                    dim: r.dim,
+                    blink: r.blink,
+                })
+                .collect();
             let tc = TextContent {
-                runs: vec![TextRun {
-                    text: p.content.clone(),
-                    fg: color_name(p.fg.as_ref()),
-                    bg: color_name(p.bg.as_ref()),
-                    ..TextRun::default()
-                }],
+                runs,
                 align: p.align,
                 source: TextSource::Pre,
             };

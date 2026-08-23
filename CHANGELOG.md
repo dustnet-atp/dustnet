@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `[pre]` accepts `[text]` children, which become styled spans of the block
+  without disturbing its spacing — the way a preformatted block carries more
+  than one colour. Spans nest and inherit, are flattened at parse time, and are
+  not elements: their text is charged to the block's text budget rather than the
+  element count, so a fully coloured block costs no more elements than a plain
+  one. That distinction is what makes a coloured `[art]` at the 200×200 limit
+  representable at all.
+
+### Fixed
+
+- `[pre]` silently discarded nested elements **and their text**. A styled span
+  vanished from the page while the document still validated, so the failure was a
+  hole in the content rather than an error. Non-`[text]` children inside `[pre]`
+  are now reported as `E020` instead of being dropped.
+- `layout_pre` drew only the first span of a block, truncating it at the first
+  nested element. Alignment and height are now measured across every span.
+
 ## 0.2.1 - 2026-08-23
 
 ### Fixed

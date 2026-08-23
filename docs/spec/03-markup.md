@@ -113,6 +113,14 @@ Common inline patterns:
 
 **Preformatted** (`[pre]`) — Preserves whitespace and line breaks exactly as written, with no word wrapping. Essential for ASCII and ANSI art.
 
+`[pre]` may contain `[text]` children, which become styled spans of the block without disturbing its spacing — this is how a preformatted block carries more than one colour. Spans may nest, inheriting outer styling, and are flattened at parse time, so they add no nesting depth. They are not elements and do not count toward the element limit; their text counts toward the block's text budget. Only `[text]` may nest inside `[pre]`; any other element is an error.
+
+```
+[pre]IE· [text fg=#f0883e]GB[/text]· BE·[/pre]
+```
+
+A `[pre]` with no children is a single span, which is what every block that predates this is.
+
 **Heading** (`[heading]`) — Section headings with level 1–3, rendered with appropriate size and weight emphasis.
 
 **List** (`[list]`, `[item]`) — Bulleted or numbered lists. Supports bullet, number, dash, arrow, and none styles, with a configurable bullet character.
@@ -242,7 +250,7 @@ The client enforces hard limits on every document to prevent resource abuse:
 | Maximum element nesting depth | 32 |
 | Maximum total elements | 10,000 |
 | Maximum attribute value length | 4,096 characters |
-| Maximum text content per element | 64 KiB |
+| Maximum text content per element | 64 KiB (summed across a `[pre]`'s spans) |
 | Maximum art dimensions | 200 columns x 200 rows |
 | Maximum explicit screen width | 512 columns |
 | Maximum document coordinate | 4,096 rows |

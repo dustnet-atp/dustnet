@@ -190,10 +190,61 @@ pub struct TextElement {
 
 #[derive(Debug, Clone)]
 pub struct PreElement {
-    pub content: String,
+    /// Styled spans in source order.
+    ///
+    /// A block with no nested styling is one run, which is what every page
+    /// written before runs existed produces.
+    pub runs: Vec<PreRun>,
     pub fg: Option<Color>,
     pub bg: Option<Color>,
     pub align: Alignment,
+}
+
+impl PreElement {
+    /// The block's text with styling discarded.
+    ///
+    /// For anything that wants the characters and not their colour: accessibility
+    /// descriptions, byte accounting, tests.
+    pub fn text(&self) -> String {
+        let mut out = String::with_capacity(self.runs.iter().map(|r| r.text.len()).sum());
+        for run in &self.runs {
+            out.push_str(&run.text);
+        }
+        out
+    }
+
+    /// Total characters across every run, for the per-element text budget.
+    ///
+    /// The budget has to be the sum rather than the largest run, or a block of
+    /// many runs each just under the limit multiplies it.
+    pub fn text_len(&self) -> usize {
+        self.runs.iter().map(|r| r.text.chars().count()).sum()
+    }
+}
+
+/// One styled span inside a preformatted block.
+///
+/// Flat rather than nested, and deliberately not an [`Element`]. A coloured
+/// `[art]` block is one run per character in the worst case -- 40,000 of them at
+/// the 200x200 art limit -- which would exhaust the 10,000-element budget while
+/// costing no more cells to draw than a plain block. Runs are charged against
+/// the text budget of the block they came from instead, which is the resource
+/// they actually consume.
+///
+/// Nested `[text]` inside `[text]` is flattened here at parse time with styles
+/// inherited, so this introduces no new recursion into the AST and nothing new
+/// for the nesting-depth limit to guard.
+#[derive(Debug, Clone, Default)]
+pub struct PreRun {
+    pub text: String,
+    pub fg: Option<Color>,
+    pub bg: Option<Color>,
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strikethrough: bool,
+    pub dim: bool,
+    pub blink: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -714,7 +765,7 @@ impl Element {
         let own = match self {
             Element::Box(element) => option_string_capacity(&element.title),
             Element::Text(element) => element.content.capacity(),
-            Element::Pre(element) => element.content.capacity(),
+            Element::Pre(element) => element.runs.iter().map(|r| r.text.capacity()).sum(),
             Element::Heading(element) => element.content.capacity(),
             Element::Link(element) => option_string_capacity(&element.id)
                 .saturating_add(element.href.capacity())
