@@ -35,11 +35,17 @@ and it keeps a Rust toolchain off your machine.
 
 ```console
 docker run --rm -it -v "$HOME/.config/dustnet:/root/.config/dustnet" \
+  -v "$HOME/.local/state/dustnet:/root/.local/state/dustnet" \
   ghcr.io/dustnet-atp/dustnet connect atp://dustnet.io
 ```
 
-The mount keeps certificate pins between runs. Drop it and the client treats
-every site as new on every launch.
+Two mounts because the client keeps two different things: the config mount
+holds certificate pins, and the state mount holds remembered logins. Drop the
+first and the client treats every site as new on every launch; drop the second
+and every launch starts logged out, since `--rm` takes the container's own
+state directory with it. They stay separate on purpose — a session is a
+credential the client was handed, not a preference you expressed, and dotfiles
+copied to a second machine should not carry your logins along.
 
 <details>
 <summary>Without Docker</summary>
