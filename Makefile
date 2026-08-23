@@ -6,7 +6,7 @@ SHELL := /bin/bash
 SITE_DIR ?=
 SITE_BUILD := target/site
 
-.PHONY: ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish docker-dustnetd docker-dustnetd-check docker-dustnetd-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check fuzz-periodic effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
+.PHONY: release release-check ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish docker-dustnetd docker-dustnetd-check docker-dustnetd-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check fuzz-periodic effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
 
 # ─── Local verification gate ─────────────────────────────────
 #
@@ -29,6 +29,9 @@ SITE_BUILD := target/site
 # The docker-*-publish targets below remain for publishing by hand. They need a
 # GHCR login; the workflow does not, because the built-in GITHUB_TOKEN can write
 # packages owned by this repository.
+#
+#   make release        cut a release: checks, crates.io, tag, images
+#   make release-check  the same checks, publishing nothing
 #
 #   make test           fast inner loop — use while working        (~10s)
 #   make ci             the full gate — before every commit       (minutes)
@@ -567,8 +570,74 @@ fuzz-check:
 build:
 	eval "$$(mise activate bash)" && cargo build
 
-release:
-	eval "$$(mise activate bash)" && cargo build --release
+# ─── Releasing ───────────────────────────────────────────────
+#
+# One sequence, because it used to be three and only two of them were joined up.
+# A tag push published the images and stopped; crates.io was a `cargo publish`
+# somebody had to remember, and `ci-publish-dryrun` only ever *checked* that it
+# would work. So a release could half-happen with nothing failing: images and a
+# tag at the new version, the registry still serving the old one, and `cargo
+# install dustnet` handing out a version that no image matched.
+#
+# Safe to run by accident. Everything up to the point of no return runs on a bare
+# `make release` and then stops, because `release` was previously an alias for
+# `cargo build --release` and muscle memory should not be able to publish. The
+# irreversible half needs CONFIRM=1: crates.io versions can be yanked but never
+# replaced or reused, so a mistake there is permanent in a way a bad tag is not.
+#
+# crates.io goes first and the tag second. Both are recoverable in one direction
+# only: a tag can be deleted and re-pushed, a version cannot be re-uploaded. So
+# the order puts the unrecoverable step where a failure still leaves the tree
+# untagged and the attempt repeatable, rather than leaving published images
+# pointing at a release the registry never received.
+release: release-check
+	@test "$(CONFIRM)" = 1 || { \
+		echo ""; \
+		echo "  checks passed for $(VERSION). Nothing has been published."; \
+		echo "  crates.io uploads are permanent -- a version can be yanked but"; \
+		echo "  never replaced. To go ahead:"; \
+		echo ""; \
+		echo "      make release CONFIRM=1"; \
+		echo ""; \
+		exit 1; }
+	@echo "── publish $(VERSION) to crates.io ──"
+	$(MISE) cargo publish --locked --workspace
+	@echo "── tag v$(VERSION); the push is what builds the images ──"
+	git tag -a "v$(VERSION)" -m "$(VERSION)"
+	git push origin "v$(VERSION)"
+	@echo "── released $(VERSION): crates.io done, images building on the tag ──"
+
+# Everything that can fail without consequence, so it all fails before anything
+# is published. Each check exists because its absence has cost something.
+release-check: ci ci-publish-dryrun docker-check docker-dustnetd-check
+	@echo "── release checks for $(VERSION) ──"
+	@test -n "$(VERSION)" || { echo "  no version in Cargo.toml"; exit 1; }
+	@test -z "$$(git status --porcelain)" \
+		|| { echo "  working tree is dirty; a release must match a commit"; exit 1; }
+# The version lives in thirteen places -- five crates carry their own and
+# seven pin each other exactly -- and they have to agree or `cargo publish`
+# refuses the workspace halfway through, after some crates are already up.
+# Matched on the path too, so this sees only the workspace's own pins. A bare
+# search for `version = "="` also catches third-party deps pinned exactly --
+# triomphe is one -- and a check that fails on every release is a check people
+# learn to skip.
+	@bad=$$(grep -rhE 'path = "\.\./dustnet[^"]*".*version = "=[^"]*"' crates/*/Cargo.toml \
+		| grep -oE 'version = "=[^"]*"' | grep -v '"=$(VERSION)"' | sort -u); \
+		test -z "$$bad" || { \
+			echo "  internal pins disagree with $(VERSION): $$bad"; exit 1; }
+# A CHANGELOG still saying "Unreleased" means the notes were never dated, and
+# the version people read about is not the one they installed.
+	@grep -q '^## $(VERSION)' CHANGELOG.md \
+		|| { echo "  CHANGELOG.md has no '## $(VERSION)' section"; exit 1; }
+	@! grep -q '^## Unreleased' CHANGELOG.md \
+		|| { echo "  CHANGELOG.md still has an Unreleased section"; exit 1; }
+# A tag that already exists means this version went out once. Publishing over
+# it is impossible on crates.io and misleading everywhere else.
+	@! git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null \
+		|| { echo "  tag v$(VERSION) already exists"; exit 1; }
+	@! git ls-remote --exit-code --tags origin "v$(VERSION)" >/dev/null 2>&1 \
+		|| { echo "  tag v$(VERSION) already on the remote"; exit 1; }
+	@echo "── $(VERSION) is releasable ──"
 
 check:
 	@eval "$$(mise activate bash)" && for f in tests/fixtures/aml/*.aml; do \

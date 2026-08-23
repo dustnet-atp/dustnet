@@ -62,33 +62,44 @@ fn layout_pre(
     let start_y = ctx.y;
     let width = ctx.width;
 
-    // Alignment and height belong to the block, not to a run, so they are
-    // measured over the concatenation of every run. Taking them from the first
-    // run alone is what this used to do, and with more than one run it truncated
-    // the block to whatever came before the first styled span.
-    let mut whole = String::new();
+    // Alignment and height belong to the block, not to a run, so both are
+    // measured across every run. Taking them from the first alone is what this
+    // used to do, and with more than one run it truncated the block to whatever
+    // came before the first styled span.
+    //
+    // Measured by walking the runs rather than by concatenating them. A joined
+    // copy of the text would be a heap allocation per frame, on a layout path fed
+    // by a remote page -- and it was one the allocation audit was right to flag,
+    // because nothing bounded or accounted for it. A line's width is the sum of
+    // its segments' widths and its end is a newline, both of which can be
+    // accumulated in place.
+    let mut max_w: u16 = 0;
+    let mut line_w: u16 = 0;
+    let mut newlines: u16 = 0;
     for run in &data.runs {
-        whole.push_str(&run.text);
+        let mut first = true;
+        for segment in run.text.split('\n') {
+            if !first {
+                max_w = max_w.max(line_w);
+                line_w = 0;
+                newlines = newlines.saturating_add(1);
+            }
+            first = false;
+            line_w = line_w.saturating_add(crate::compositor::layout::text::display_width(
+                segment, ctx.wcfg,
+            ) as u16);
+        }
     }
+    max_w = max_w.max(line_w);
 
     let block_offset = match data.align {
         Alignment::Left => 0u16,
-        Alignment::Center | Alignment::Right => {
-            let max_w = whole
-                .split('\n')
-                .map(|l| crate::compositor::layout::text::display_width(l, ctx.wcfg) as u16)
-                .max()
-                .unwrap_or(0);
-            match data.align {
-                Alignment::Center => ctx.width.saturating_sub(max_w) / 2,
-                Alignment::Right => ctx.width.saturating_sub(max_w),
-                _ => 0,
-            }
-        }
+        Alignment::Center => ctx.width.saturating_sub(max_w) / 2,
+        Alignment::Right => ctx.width.saturating_sub(max_w),
     };
 
     scene.allocate_buffer(node_id, width.max(1), 1);
-    let line_count = whole.split('\n').count() as u16;
+    let line_count = newlines.saturating_add(1);
     let mut local_y: u16 = 0;
     if let Some(text_buf) = scene.layout_buffer_mut(node_id) {
         text_buf.ensure_height(line_count.max(1));

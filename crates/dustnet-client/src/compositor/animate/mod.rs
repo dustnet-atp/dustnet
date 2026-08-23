@@ -44,6 +44,10 @@ pub(crate) enum AnimateAllocationSite {
     /// The authored identifiers and `after` chains copied out of the scene for
     /// every animation adapter, admitted as one payload lease.
     Payload,
+    /// Storage for the page's build notices, admitted with the text it will
+    /// hold. Refusing this costs the notices and not the page, which is the one
+    /// behaviour here worth a test of its own.
+    BuildNotices,
 }
 
 #[cfg(test)]

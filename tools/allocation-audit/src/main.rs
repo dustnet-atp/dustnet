@@ -666,6 +666,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "scoped projection of the reducer's input value; the String is the model's, re-projected per frame",
     ),
     (
+        "crates/dustnet-client/src/compositor/terminal/presentation.rs",
+        "SessionRow",
+        "scoped projection of the session store for the HUD; re-projected per frame from state already bounded and inventoried under core.session.sites, and never retained",
+    ),
+    (
         "crates/dustnet-client/src/compositor/terminal/rendering.rs",
         "FallibleString",
         "bounded fallible writer; the String it builds is accounted by the calling site's row, never retained here",
@@ -793,6 +798,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     (
         "crates/dustnet-core/src/parser/ast.rs",
         "PreElement",
+        "AML AST payload; aggregate bounded by MAX_ELEMENTS, MAX_DEPTH and the scanner payload limits, constructed fallibly under row transient.parser_result",
+    ),
+    (
+        "crates/dustnet-core/src/parser/ast.rs",
+        "PreRun",
         "AML AST payload; aggregate bounded by MAX_ELEMENTS, MAX_DEPTH and the scanner payload limits, constructed fallibly under row transient.parser_result",
     ),
     (

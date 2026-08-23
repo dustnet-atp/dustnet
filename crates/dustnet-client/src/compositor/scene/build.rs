@@ -514,21 +514,31 @@ fn build_element_inner(cx: &mut BuildCtx, element: &Element) -> Option<NodeId> {
             // is the whole of the change -- the layout and the cell buffer could
             // already draw per-run colour, there was simply no way to say it in
             // the markup.
-            let runs = p
-                .runs
-                .iter()
-                .map(|r| TextRun {
-                    text: r.text.clone(),
-                    fg: color_name(r.fg.as_ref().or(p.fg.as_ref())),
-                    bg: color_name(r.bg.as_ref().or(p.bg.as_ref())),
-                    bold: r.bold,
-                    italic: r.italic,
-                    underline: r.underline,
-                    strikethrough: r.strikethrough,
-                    dim: r.dim,
-                    blink: r.blink,
-                })
-                .collect();
+            // Reserved exactly, and a refusal marks the scene's relation storage
+            // failed the way `build_text` does for the same shape of growth. A
+            // bare `.collect()` grows a vector straight from remote nesting
+            // without admitting it -- which is what the allocation audit flagged,
+            // and it was right: the run count comes from the page.
+            let mut runs: Vec<TextRun> = Vec::new();
+            if runs.try_reserve_exact(p.runs.len()).is_err() {
+                *cx.relation_failed = true;
+            }
+            runs.extend(
+                p.runs
+                    .iter()
+                    .take(if *cx.relation_failed { 0 } else { p.runs.len() })
+                    .map(|r| TextRun {
+                        text: r.text.clone(),
+                        fg: color_name(r.fg.as_ref().or(p.fg.as_ref())),
+                        bg: color_name(r.bg.as_ref().or(p.bg.as_ref())),
+                        bold: r.bold,
+                        italic: r.italic,
+                        underline: r.underline,
+                        strikethrough: r.strikethrough,
+                        dim: r.dim,
+                        blink: r.blink,
+                    }),
+            );
             let tc = TextContent {
                 runs,
                 align: p.align,

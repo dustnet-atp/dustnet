@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.1 - 2026-08-23
+
+### Fixed
+
+- `layout_pre` no longer allocates. Measuring a block's alignment and height
+  across its runs was done by joining their text into one String -- a heap
+  allocation per frame, on a layout path fed by a remote page, that nothing
+  bounded or accounted for. A line's width is the sum of its segments' and its
+  end is a newline, so both are accumulated in place instead.
+- The `[pre]` run vector is admitted before it is filled. A bare `.collect()`
+  grew it straight from remote nesting; it now reserves exactly and marks the
+  scene's relation storage failed on refusal, which is what `build_text` already
+  did for the same shape of growth.
+- The heap owners added in 0.3.0 are declared: `PreRun` and `SessionRow` as
+  exempt projections, and the build-notice storage as inventory rows with the
+  rejection site and test they claim. 0.3.0 shipped without these, so its own
+  allocation audit did not pass -- which is why `make release` now runs the gate
+  before it can publish anything.
+
 ## 0.3.0 - 2026-08-23
 
 ### Added

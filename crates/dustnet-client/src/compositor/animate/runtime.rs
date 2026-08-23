@@ -582,6 +582,9 @@ impl AnimationRuntime {
             total.checked_add(node.id.capacity().saturating_add(BUILD_NOTICE_TEXT_LIMIT))
         });
         let (mut build_notices, build_notice_lease) = match build_notice_payload_bound
+            .filter(|_| {
+                !super::reject_animate_allocation(super::AnimateAllocationSite::BuildNotices)
+            })
             .and_then(|bound| try_build_notice_storage(&governor, animation_node_count, bound))
         {
             Some((values, lease)) => (values, Some(lease)),
@@ -2490,14 +2493,81 @@ CD[/pre]
         assert!(repeat.notices.is_empty(), "notices are drained, not held");
     }
 
-    /// A refused frame collection rejects the whole animation runtime and
-    /// leaves the governor exactly where it started.
+    /// Refusing the build-notice storage costs the notices, not the page.
     ///
-    /// Preparation admits the frame vector, then per-frame descendants and
-    /// placement snapshots, and lays each frame out under a throwaway buffer.
-    /// Naming the site is what shows the refusal is atomic rather than
-    /// partial: no adapter installed, no budget held, and the next attempt
-    /// succeeds.
+    /// Every other admission failure here discards the candidate: a page whose
+    /// frames or payload cannot be admitted is not a page. Notices are the
+    /// exception, because they exist to report a failure -- dropping the page
+    /// because its complaint would not fit is the wrong trade. The row in
+    /// verification/allocation-owners.tsv claims that behaviour; this holds it.
+    #[test]
+    fn refused_effect_reaches_the_error_log() {
+        use crate::compositor::animate::{AnimateAllocationSite, AnimateRejectionGuard};
+
+        let color = crate::color::ColorSupport::Truecolor;
+        let wcfg = crate::compositor::layout::text::WidthConfig::default();
+        let laid_out_scene = || {
+            let src = r#"[page mode=document]
+[animate id="a"][frame][text]x[/text][/frame][/animate]
+[/page]"#;
+            let mut scanner = crate::scanner::Scanner::new(src.as_bytes()).unwrap();
+            let tokens = scanner.scan_all().unwrap();
+            let doc = crate::parser::parse(tokens).document.unwrap();
+            let mut scene = crate::compositor::scene::build::from_document(&doc);
+            let layout =
+                crate::compositor::layout::engine::layout_scene(&mut scene, 20, 5, color, wcfg);
+            for placed in &layout.placed {
+                if placed.is_animation() && !placed.rect.is_empty() {
+                    let node = scene.find_by_aml_id(&placed.id).unwrap();
+                    scene.ensure_buffer(node, placed.rect.w, placed.rect.h);
+                    scene.update_placement(
+                        node,
+                        crate::compositor::layout::engine::Placement {
+                            rect: placed.rect,
+                            flow_advance: placed.rect.h,
+                            bbox: placed.rect,
+                        },
+                    );
+                }
+            }
+            scene
+        };
+
+        let governor = ResourceGovernor::new();
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+
+        let mut scene = laid_out_scene();
+        let rejection = AnimateRejectionGuard::at(AnimateAllocationSite::BuildNotices);
+        let refused = executor.block_on(AnimationRuntime::from_scene_with_prepared_wasm(
+            &mut scene,
+            color,
+            wcfg,
+            &governor,
+            &std::collections::HashMap::new(),
+        ));
+        drop(rejection);
+        assert!(
+            refused.is_ok(),
+            "refusing notice storage must not refuse the page"
+        );
+
+        let mut ordinary = laid_out_scene();
+        assert!(
+            executor
+                .block_on(AnimationRuntime::from_scene_with_prepared_wasm(
+                    &mut ordinary,
+                    color,
+                    wcfg,
+                    &governor,
+                    &std::collections::HashMap::new(),
+                ))
+                .is_ok(),
+            "and the unrefused path still builds"
+        );
+    }
+
     #[test]
     #[cfg_attr(miri, ignore = "tokio runtime needs kqueue, which Miri cannot emulate")]
     fn frame_collection_rejection_refuses_the_runtime_and_recovers() {
