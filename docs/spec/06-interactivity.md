@@ -33,7 +33,7 @@ In document mode, changing a panel's height causes surrounding content to reflow
 Each state within a panel can specify:
 - Its own content (any valid AML elements)
 - A transition effect for animating into this state (`cut`, `fade`, `slide-*`,
-  `draw-down`, `draw-right`, `draw-out`, or `dissolve`). Draw transitions construct one
+  `draw-down`, `draw-right`, `draw-left`, `draw-out`, or `dissolve`). Draw transitions construct one
   edge first, then reveal the panel by complete rows or columns.
 - A transition duration
 - Dimension overrides (width, height) that differ from other states

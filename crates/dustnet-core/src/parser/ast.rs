@@ -706,6 +706,7 @@ pub enum TransitionKind {
     SlideDown,
     DrawDown,
     DrawRight,
+    DrawLeft,
     DrawOut,
     Dissolve,
 }
@@ -1265,6 +1266,8 @@ pub fn parse_transition_kind(s: &str) -> Option<TransitionKind> {
         Some(TransitionKind::SlideDown)
     } else if s.eq_ignore_ascii_case("draw-down") || s.eq_ignore_ascii_case("drawdown") {
         Some(TransitionKind::DrawDown)
+    } else if s.eq_ignore_ascii_case("draw-left") || s.eq_ignore_ascii_case("drawleft") {
+        Some(TransitionKind::DrawLeft)
     } else if s.eq_ignore_ascii_case("draw-right") || s.eq_ignore_ascii_case("drawright") {
         Some(TransitionKind::DrawRight)
     } else if s.eq_ignore_ascii_case("draw-out") || s.eq_ignore_ascii_case("drawout") {

@@ -4,6 +4,9 @@
 
 ### Added
 
+- `draw-left`, the mirror of `draw-right`: traces the box's right edge, then
+  unfurls columns leftward. Available to panel states and page transitions
+  alike, since both dispatch on the same kind.
 - `[pre]` accepts `[text]` children, which become styled spans of the block
   without disturbing its spacing — the way a preformatted block carries more
   than one colour. Spans nest and inherit, are flattened at parse time, and are

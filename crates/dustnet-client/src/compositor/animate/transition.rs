@@ -13,6 +13,7 @@
 //!   side.
 //! - `DrawDown` — traces the top edge, then reveals complete rows downward.
 //! - `DrawRight` — traces the left edge, then reveals complete columns rightward.
+//! - `DrawLeft` — the mirror: traces the right edge, then reveals columns leftward.
 //! - `DrawOut` — grows a live rectangular frame from the panel centre.
 //! - `Dissolve` — per-cell stochastic mask picks old or new.
 //!
@@ -364,6 +365,44 @@ impl TransitionAdapter {
                     }
                 }
             }
+            TransitionKind::DrawLeft => {
+                // Mirror of DrawRight: construct the right edge top-to-bottom,
+                // then unfurl columns right-to-left. The frontier column samples
+                // the authored left edge so the box stays visibly closed while it
+                // grows -- the same trick DrawRight plays with the right edge,
+                // reflected.
+                const RIGHT_EDGE_PHASE: f32 = 0.50;
+                let local_x = screen_x.saturating_sub(self.target_region.x);
+                let local_y = screen_y.saturating_sub(self.target_region.y);
+                let last_x = self.target_region.w.saturating_sub(1);
+                if t < RIGHT_EDGE_PHASE {
+                    let progress = t / RIGHT_EDGE_PHASE;
+                    let revealed_rows = (progress * self.target_region.h as f32).ceil() as u16;
+                    if local_x == last_x && local_y < revealed_rows {
+                        new
+                    } else {
+                        old
+                    }
+                } else {
+                    let progress = (t - RIGHT_EDGE_PHASE) / (1.0 - RIGHT_EDGE_PHASE);
+                    let remaining_columns = self.target_region.w.saturating_sub(1);
+                    let revealed_columns = 1 + (progress * remaining_columns as f32).ceil() as u16;
+                    // Counted inward from the right edge, so the frontier is a
+                    // column index measured backwards.
+                    let frontier = last_x.saturating_sub(revealed_columns.saturating_sub(1));
+                    if local_x < frontier {
+                        old
+                    } else if revealed_columns > 1
+                        && revealed_columns < self.target_region.w
+                        && local_x == frontier
+                    {
+                        let new_y = screen_y.saturating_sub(self.new_rect.y);
+                        self.new_buf.get(0, new_y).cloned()
+                    } else {
+                        new
+                    }
+                }
+            }
             TransitionKind::DrawOut => self.draw_out_cell(screen_x, screen_y, old),
             TransitionKind::SlideLeft
             | TransitionKind::SlideRight
@@ -399,7 +438,10 @@ impl TransitionAdapter {
         if self.t() >= 1.0
             || !matches!(
                 self.kind,
-                TransitionKind::DrawDown | TransitionKind::DrawRight | TransitionKind::DrawOut
+                TransitionKind::DrawDown
+                    | TransitionKind::DrawRight
+                    | TransitionKind::DrawLeft
+                    | TransitionKind::DrawOut
             )
             || screen_y != self.new_rect.y
         {
@@ -753,6 +795,61 @@ mod tests {
         assert_eq!(transition.blend_cell(9, 3).map(|c| c.ch), Some('╯'));
     }
 
+    /// The mirror of `draw_right_traces_left_edge_before_revealing_columns`.
+    ///
+    /// Asserted as the reflection rather than as fresh expectations: the point of
+    /// DrawLeft is that it does exactly what DrawRight does, from the other side.
+    /// So the right edge is traced first, the frontier moves leftward, and the
+    /// column at the frontier shows the authored *left* edge while it travels.
+    #[test]
+    fn draw_left_traces_right_edge_before_revealing_columns() {
+        let (_scene, node) = panel_scene(10, 4);
+        let rect = Rect::new(0, 0, 10, 4);
+        let mut next = fill(10, 4, 'B');
+        for y in 0..4u16 {
+            next.put_char(0, y, '│', &CellStyle::default());
+            next.put_char(9, y, '│', &CellStyle::default());
+        }
+        next.put_char(0, 0, '╭', &CellStyle::default());
+        next.put_char(0, 3, '╰', &CellStyle::default());
+        next.put_char(9, 0, '╮', &CellStyle::default());
+        next.put_char(9, 3, '╯', &CellStyle::default());
+        let mut transition = TransitionAdapter::new(
+            "draw".into(),
+            node,
+            rect,
+            fill(10, 4, 'A'),
+            rect,
+            next,
+            rect,
+            TransitionKind::DrawLeft,
+            1000,
+        );
+
+        // First half traces the right edge downward; the left edge is untouched.
+        transition.elapsed_ms = 200;
+        assert_eq!(transition.blend_cell(9, 0).map(|c| c.ch), Some('╮'));
+        assert_eq!(transition.blend_cell(9, 1).map(|c| c.ch), Some('│'));
+        assert_eq!(transition.blend_cell(9, 2).map(|c| c.ch), Some('A'));
+        assert_eq!(transition.blend_cell(8, 0).map(|c| c.ch), Some('A'));
+
+        transition.elapsed_ms = 500;
+        assert_eq!(transition.blend_cell(9, 0).map(|c| c.ch), Some('╮'));
+        assert_eq!(transition.blend_cell(9, 3).map(|c| c.ch), Some('╯'));
+        assert_eq!(transition.blend_cell(8, 0).map(|c| c.ch), Some('A'));
+
+        // Second half unfurls leftward, the frontier carrying the left edge.
+        transition.elapsed_ms = 750;
+        assert_eq!(transition.blend_cell(4, 0).map(|c| c.ch), Some('╭'));
+        assert_eq!(transition.blend_cell(4, 2).map(|c| c.ch), Some('│'));
+        assert_eq!(transition.blend_cell(4, 3).map(|c| c.ch), Some('╰'));
+        assert_eq!(transition.blend_cell(0, 0).map(|c| c.ch), Some('A'));
+
+        transition.elapsed_ms = 1000;
+        assert_eq!(transition.blend_cell(0, 0).map(|c| c.ch), Some('╭'));
+        assert_eq!(transition.blend_cell(0, 3).map(|c| c.ch), Some('╰'));
+    }
+
     #[test]
     fn draw_out_grows_a_live_frame_from_the_centre() {
         let (_scene, node) = panel_scene(10, 6);
@@ -806,7 +903,11 @@ mod tests {
         let mut new = CellBuffer::new(9, 3);
         new.put_str(0, 0, "╭─ Box ─╮", &CellStyle::default());
 
-        for kind in [TransitionKind::DrawDown, TransitionKind::DrawRight] {
+        for kind in [
+            TransitionKind::DrawDown,
+            TransitionKind::DrawRight,
+            TransitionKind::DrawLeft,
+        ] {
             let mut transition = TransitionAdapter::new(
                 "unfurl".into(),
                 node,

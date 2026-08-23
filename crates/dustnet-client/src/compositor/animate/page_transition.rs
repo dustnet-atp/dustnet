@@ -212,6 +212,44 @@ fn render_transition_frame_into(
                 }
             }
         }
+        TransitionKind::DrawLeft => {
+            // Mirror of DrawRight below: the right edge is traced first, then
+            // columns are revealed leftward, with the frontier column sampling
+            // the authored left edge so the page stays visibly closed as it grows.
+            const RIGHT_EDGE_PHASE: f32 = 0.50;
+            let last_x = w.saturating_sub(1);
+            let (revealed_rows, revealed_columns) = if t < RIGHT_EDGE_PHASE {
+                (((t / RIGHT_EDGE_PHASE) * h as f32).ceil() as u16, 0)
+            } else {
+                let progress = (t - RIGHT_EDGE_PHASE) / (1.0 - RIGHT_EDGE_PHASE);
+                let remaining_columns = w.saturating_sub(1);
+                (h, 1 + (progress * remaining_columns as f32).ceil() as u16)
+            };
+            let frontier = last_x.saturating_sub(revealed_columns.saturating_sub(1));
+            for y in 0..hu as u16 {
+                for x in 0..wu as u16 {
+                    let reveal_new = if t < RIGHT_EDGE_PHASE {
+                        x == last_x && y < revealed_rows
+                    } else {
+                        x >= frontier
+                    };
+                    let cell = if t >= RIGHT_EDGE_PHASE
+                        && revealed_columns > 1
+                        && revealed_columns < w
+                        && x == frontier
+                    {
+                        new_buf.get(0, y)
+                    } else if reveal_new {
+                        new_buf.get(x, y)
+                    } else {
+                        old_buf.get(x, y)
+                    };
+                    if let Some(cell) = cell {
+                        out.set(x, y, cell.clone());
+                    }
+                }
+            }
+        }
         TransitionKind::DrawRight => {
             const LEFT_EDGE_PHASE: f32 = 0.50;
             let (revealed_rows, revealed_columns) = if t < LEFT_EDGE_PHASE {
