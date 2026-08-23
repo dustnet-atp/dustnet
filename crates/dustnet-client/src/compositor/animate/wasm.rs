@@ -46,7 +46,7 @@ impl fmt::Write for NoticeWriter {
     }
 }
 
-fn try_format_notice(limit: usize, args: fmt::Arguments<'_>) -> Option<String> {
+pub(crate) fn try_format_notice(limit: usize, args: fmt::Arguments<'_>) -> Option<String> {
     #[cfg(test)]
     if REJECT_NOTICE_ALLOCATION.with(std::cell::Cell::get) {
         return None;

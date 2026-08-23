@@ -52,6 +52,48 @@ fn try_governed_vec<T>(
     Some((values, lease))
 }
 
+/// Bytes a single page-build notice may hold beyond the effect id it names.
+const BUILD_NOTICE_TEXT_LIMIT: usize = 160;
+
+/// Admit storage for the page's build notices: the vector and, unlike
+/// `try_governed_vec`, the notice text that will be written into it. The
+/// caller shrinks the lease to what was actually kept.
+fn try_build_notice_storage(
+    governor: &ResourceGovernor,
+    capacity: usize,
+    payload_bound: usize,
+) -> Option<(Vec<String>, BudgetLease)> {
+    let requested = capacity
+        .checked_mul(std::mem::size_of::<String>())?
+        .checked_add(payload_bound)?;
+    let mut lease = governor
+        .reserve(ResourceCategory::RemoteCollections, requested)
+        .ok()?;
+    let mut values = Vec::new();
+    values.try_reserve_exact(capacity).ok()?;
+    let admitted = values
+        .capacity()
+        .checked_mul(std::mem::size_of::<String>())?
+        .checked_add(payload_bound)?;
+    lease.try_resize_with_cost(admitted, admitted).ok()?;
+    Some((values, lease))
+}
+
+/// Record a page-build failure for the HUD without growing the pre-admitted
+/// vector: a notice that does not fit its reservation is dropped rather than
+/// allocated off-budget. Stderr is not an option here — the client owns the
+/// terminal, and a line written behind its back lands on top of the page.
+fn push_build_notice(notices: &mut Vec<String>, id_len: usize, args: std::fmt::Arguments<'_>) {
+    if notices.len() == notices.capacity() {
+        return;
+    }
+    if let Some(notice) =
+        super::wasm::try_format_notice(id_len.saturating_add(BUILD_NOTICE_TEXT_LIMIT), args)
+    {
+        notices.push(notice);
+    }
+}
+
 /// The subset of scene animation metadata needed while constructing runtime
 /// adapters. Keeping this purpose-built avoids cloning `AnimationData::frames`:
 /// frame children are discovered directly from the scene below.
@@ -377,6 +419,14 @@ pub struct AnimationRuntime {
     _transition_collection_lease: Option<BudgetLease>,
     /// Shared budget for fallible per-tick and skip output collections.
     output_governor: Option<ResourceGovernor>,
+    /// Failures raised while building the page that the page's author needs
+    /// to see: an effect the frame budget could not admit, or one whose
+    /// module would not load. Drained into the first `tick`, which is what
+    /// carries them to the HUD Errors tab.
+    build_notices: Vec<String>,
+    /// Retained-capacity accounting for `build_notices`; released when they
+    /// are drained.
+    _build_notice_lease: Option<BudgetLease>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -398,6 +448,8 @@ impl AnimationRuntime {
             _animation_payload_lease: None,
             _transition_collection_lease: None,
             output_governor: None,
+            build_notices: Vec::new(),
+            _build_notice_lease: None,
         }
     }
 
@@ -411,6 +463,8 @@ impl AnimationRuntime {
             _animation_payload_lease: None,
             _transition_collection_lease: None,
             output_governor: None,
+            build_notices: Vec::new(),
+            _build_notice_lease: None,
         }
     }
 
@@ -519,6 +573,19 @@ impl AnimationRuntime {
         let Some((animation_nodes, mut animation_payload_lease)) = payload else {
             scene.record_resource_error();
             return Err(AnimationPreparationRejected);
+        };
+
+        // Notices raised below reach the user through the HUD, so their
+        // storage is admitted alongside the adapters. Failing to admit it
+        // costs the notices, not the page: every push is capacity-guarded.
+        let build_notice_payload_bound = animation_nodes.iter().try_fold(0usize, |total, node| {
+            total.checked_add(node.id.capacity().saturating_add(BUILD_NOTICE_TEXT_LIMIT))
+        });
+        let (mut build_notices, build_notice_lease) = match build_notice_payload_bound
+            .and_then(|bound| try_build_notice_storage(&governor, animation_node_count, bound))
+        {
+            Some((values, lease)) => (values, Some(lease)),
+            None => (Vec::new(), None),
         };
 
         let wasm_runtime = WasmRuntime::with_governor(governor.clone());
@@ -648,9 +715,13 @@ impl AnimationRuntime {
                         Ok((instance, frame_count)) => {
                             let authored_frames = frame_count as usize;
                             if authored_frames > remaining_frames {
-                                eprintln!(
-                                    "WASM animation '{}' declares {authored_frames} frames, exceeding the remaining page limit of {remaining_frames}",
-                                    anim_id,
+                                push_build_notice(
+                                    &mut build_notices,
+                                    anim_id.len(),
+                                    format_args!(
+                                        "effect '{anim_id}' needs {authored_frames} frames; the page has {remaining_frames} of its {} left",
+                                        crate::parser::MAX_ANIMATION_FRAMES
+                                    ),
                                 );
                                 continue;
                             }
@@ -684,7 +755,11 @@ impl AnimationRuntime {
                                 scene.record_resource_error();
                                 return Err(AnimationPreparationRejected);
                             }
-                            eprintln!("WASM animation '{}' failed: {e}", anim_id,);
+                            push_build_notice(
+                                &mut build_notices,
+                                anim_id.len(),
+                                format_args!("effect '{anim_id}' failed to load: {e}"),
+                            );
                         }
                     }
                 }
@@ -822,6 +897,19 @@ impl AnimationRuntime {
         let animation_payload_lease =
             (retained_animation_payload > 0).then_some(animation_payload_lease);
 
+        // As with the payload lease: keep only what the notices retain, and
+        // release the reservation outright on the common path where the page
+        // built clean.
+        build_notices.shrink_to_fit();
+        let build_notice_lease = build_notice_lease.and_then(|mut lease| {
+            let retained = build_notices
+                .capacity()
+                .saturating_mul(std::mem::size_of::<String>())
+                .saturating_add(build_notices.iter().map(String::capacity).sum::<usize>());
+            lease.shrink_to(retained);
+            (retained > 0).then_some(lease)
+        });
+
         Ok(Self {
             animations,
             transition_animations,
@@ -830,6 +918,8 @@ impl AnimationRuntime {
             _animation_payload_lease: animation_payload_lease,
             _transition_collection_lease: Some(transition_collection_lease),
             output_governor: Some(governor),
+            build_notices,
+            _build_notice_lease: build_notice_lease,
         })
     }
 
@@ -1218,6 +1308,20 @@ impl AnimationRuntime {
                 Some(bytes) => bytes,
                 None => return TickResult::allocation_failed(),
             };
+        // Page-build notices are still waiting on the first tick after a
+        // page load; they are admitted here with the adapters' own.
+        let build_notice_count = self.build_notices.len();
+        let Some(notice_capacity) = animation_count.checked_add(build_notice_count) else {
+            return TickResult::allocation_failed();
+        };
+        let build_notice_payload = match self
+            .build_notices
+            .iter()
+            .try_fold(0usize, |total, notice| total.checked_add(notice.capacity()))
+        {
+            Some(bytes) => bytes,
+            None => return TickResult::allocation_failed(),
+        };
         let Some((pre_finished, _pre_finished_lease)) =
             try_finished_snapshot(&self.animations, governor.as_ref())
         else {
@@ -1228,8 +1332,11 @@ impl AnimationRuntime {
             animation_count,
             total_count,
             total_count,
-            animation_count,
-            match id_payload_bound.checked_add(notice_payload_bound) {
+            notice_capacity,
+            match id_payload_bound
+                .checked_add(notice_payload_bound)
+                .and_then(|bytes| bytes.checked_add(build_notice_payload))
+            {
                 Some(bytes) => bytes,
                 None => return TickResult::allocation_failed(),
             },
@@ -1241,6 +1348,14 @@ impl AnimationRuntime {
                 return TickResult::allocation_failed();
             };
             output.newly_finished.push(id);
+        }
+
+        // The strings move into this tick's admitted payload, so the build
+        // reservation goes with them.
+        if build_notice_count > 0 {
+            output.notices.append(&mut self.build_notices);
+            self.build_notices = Vec::new();
+            self._build_notice_lease = None;
         }
 
         let mut changed = false;
@@ -2286,6 +2401,93 @@ CD[/pre]
             runtime.animations.len(),
             crate::parser::MAX_ANIMATION_FRAMES
         );
+    }
+
+    /// An effect the page frame budget cannot admit is reported through the
+    /// tick's notices, which is what the HUD Errors tab reads.
+    ///
+    /// The client owns the terminal for the life of the session, so the old
+    /// `eprintln!` on this path was unreadable by construction: it landed on
+    /// top of the page it was complaining about, underneath a background
+    /// effect. The notice is raised while the page is being built, before any
+    /// tick has run, so what this pins is the hand-off — the build keeps it
+    /// until a tick can carry it out.
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "runs the WASM interpreter; Miri interpreting an interpreter is impractical"
+    )]
+    fn wasm_effect_over_the_frame_budget_is_reported_through_tick_notices() {
+        let effects = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("client crate is nested under <workspace>/crates")
+            .join("effects/line_draw/target/wasm32-unknown-unknown/release");
+        if !effects.join("line_draw.wasm").exists() {
+            eprintln!("skipping: line_draw.wasm not built");
+            return;
+        }
+
+        // line-draw declares one frame per painted cell plus a blank one, so a
+        // solid block of dashes is the shortest way to author past the budget.
+        let rows = (crate::parser::MAX_ANIMATION_FRAMES / 10) + 2;
+        let mut src = String::from(
+            "[page mode=document]\n[animate id=\"long\" src=\"/line_draw.wasm\"]\n[pre]",
+        );
+        for _ in 0..rows {
+            src.push_str("──────────\n");
+        }
+        src.push_str("[/pre]\n[/animate]\n[/page]");
+
+        let color = crate::color::ColorSupport::Truecolor;
+        let wcfg = crate::compositor::layout::text::WidthConfig::default();
+        let mut scanner = crate::scanner::Scanner::new(src.as_bytes()).unwrap();
+        let tokens = scanner.scan_all().unwrap();
+        let doc = crate::parser::parse(tokens).document.unwrap();
+        let mut scene = crate::compositor::scene::build::from_document(&doc);
+        let height = u16::try_from(rows + 4).unwrap();
+        let layout =
+            crate::compositor::layout::engine::layout_scene(&mut scene, 20, height, color, wcfg);
+        for placed in &layout.placed {
+            if placed.is_animation() && !placed.rect.is_empty() {
+                let node = scene.find_by_aml_id(&placed.id).unwrap();
+                scene.ensure_buffer(node, placed.rect.w, placed.rect.h);
+                scene.update_placement(
+                    node,
+                    crate::compositor::layout::engine::Placement {
+                        rect: placed.rect,
+                        flow_advance: placed.rect.h,
+                        bbox: placed.rect,
+                    },
+                );
+            }
+        }
+
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut runtime = executor.block_on(AnimationRuntime::from_scene(
+            &mut scene,
+            color,
+            wcfg,
+            Some(effects.as_path()),
+        ));
+        assert!(
+            runtime.animations.is_empty(),
+            "the effect is refused, not truncated"
+        );
+
+        let result = runtime.tick(&mut scene, Instant::now(), 0, height);
+        assert_eq!(result.notices.len(), 1, "one notice for one refusal");
+        let notice = &result.notices[0];
+        assert!(
+            notice.contains("long") && notice.contains("frames"),
+            "notice names the effect and the budget: {notice}"
+        );
+
+        // Delivered once: a notice repeated every tick would bury the log.
+        let repeat = runtime.tick(&mut scene, Instant::now(), 0, height);
+        assert!(repeat.notices.is_empty(), "notices are drained, not held");
     }
 
     /// A refused frame collection rejects the whole animation runtime and
