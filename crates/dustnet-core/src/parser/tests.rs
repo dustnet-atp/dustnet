@@ -168,6 +168,58 @@ fn heading_levels() {
     }
 }
 
+// ─── Transitions ─────────────────────────────────────────────
+
+#[test]
+fn unknown_transition_warns_rather_than_cutting_silently() {
+    // An unrecognised name resolves to None, and None means cut -- so a typo, or
+    // a name from a build newer than the client reading the page, rendered as the
+    // box simply appearing. Nothing said so, which made a stale client look like
+    // a broken panel.
+    let result = parse_aml(
+        "[page mode=document][panel id=\"p\" state=\"a\"]\
+         [state name=\"a\"][/state]\
+         [state name=\"b\" transition=\"banana\"][/state][/panel][/page]",
+    );
+    assert!(!result.has_errors(), "an unknown name must not be fatal");
+    assert!(
+        has_diagnostic_code(&result, "W008"),
+        "expected W008, got {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn every_known_transition_parses_without_warning() {
+    // The list a page may rely on. draw-left belongs here for the same reason the
+    // others do: a name that parses on one build and warns on another is the
+    // failure this warning exists to surface.
+    for name in [
+        "cut",
+        "fade",
+        "slide-left",
+        "slide-right",
+        "slide-up",
+        "slide-down",
+        "draw-down",
+        "draw-right",
+        "draw-left",
+        "draw-out",
+        "dissolve",
+    ] {
+        let src = format!(
+            "[page mode=document][panel id=\"p\" state=\"a\"]\
+             [state name=\"a\"][/state]\
+             [state name=\"b\" transition=\"{name}\"][/state][/panel][/page]"
+        );
+        let result = parse_aml(&src);
+        assert!(
+            !has_diagnostic_code(&result, "W008"),
+            "{name} should be recognised"
+        );
+    }
+}
+
 // ─── Preformatted Styled Runs ────────────────────────────────
 
 #[test]

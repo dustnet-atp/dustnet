@@ -369,6 +369,31 @@ impl Parser {
         self.diagnostic(DiagnosticLevel::Warning, code, format_args!("{message}"));
     }
 
+    /// Parse a transition name, warning when it is not one this build knows.
+    ///
+    /// `parse_transition_kind` returns None for an unrecognised name, and None
+    /// means cut -- so a typo, or a name from a newer build than the client
+    /// reading the page, renders as the box simply appearing. Nothing reported
+    /// it: `transition="banana"` validated clean and popped. The failure looked
+    /// like a bug in the panel rather than a name the client had never heard of.
+    ///
+    /// A warning rather than an error, because a page authored against a newer
+    /// build should still render on an older client -- just visibly plainly,
+    /// with a reason available.
+    fn transition_attr(&mut self, element: &str, value: &str) -> Option<TransitionKind> {
+        let kind = parse_transition_kind(value);
+        if kind.is_none() && !value.trim().is_empty() {
+            self.warning_fmt(
+                "W008",
+                format_args!(
+                    "unknown transition \"{value}\" on [{element}]; \
+                     this build will cut instead of animating"
+                ),
+            );
+        }
+        kind
+    }
+
     fn warning_fmt(&mut self, code: &'static str, args: fmt::Arguments<'_>) {
         self.diagnostic(DiagnosticLevel::Warning, code, args);
     }
@@ -509,7 +534,7 @@ impl Parser {
                     }
                 }
                 "transition" => {
-                    transition = parse_transition_kind(attr_str_value(&attr.value));
+                    transition = self.transition_attr("page", attr_str_value(&attr.value));
                 }
                 "duration" => {
                     if let Ok(d) = parse_duration_ms(attr_str_value(&attr.value)) {
@@ -1264,7 +1289,7 @@ impl Parser {
                 "id" => id = Some(self.copy_string(attr_str_value(&attr.value))),
                 "href" => href = self.copy_string(attr_str_value(&attr.value)),
                 "transition" => {
-                    transition = parse_transition_kind(attr_str_value(&attr.value));
+                    transition = self.transition_attr("link", attr_str_value(&attr.value));
                 }
                 "duration" => {
                     if let Ok(d) = parse_duration_ms(attr_str_value(&attr.value)) {
@@ -1471,7 +1496,7 @@ impl Parser {
                 }
                 "to" => to = Some(self.copy_string(attr_str_value(&attr.value))),
                 "transition" => {
-                    transition = parse_transition_kind(attr_str_value(&attr.value));
+                    transition = self.transition_attr("state", attr_str_value(&attr.value));
                 }
                 "duration" => {
                     if let Ok(d) = parse_duration_ms(attr_str_value(&attr.value)) {
@@ -2117,7 +2142,16 @@ impl Parser {
         for attr in attrs {
             match attr.name.as_str() {
                 "name" => name = self.copy_string(attr_str_value(&attr.value)),
-                "transition" => transition = Some(self.copy_string(attr_str_value(&attr.value))),
+                "transition" => {
+                    // Kept as the authored string -- the client resolves it when
+                    // it builds the scene -- but checked here, because an
+                    // unrecognised name silently becomes a cut and a page that
+                    // pops instead of animating looks like a broken panel rather
+                    // than a name this build has never heard of.
+                    let value = attr_str_value(&attr.value);
+                    let _ = self.transition_attr("state", value);
+                    transition = Some(self.copy_string(value));
+                }
                 "duration" => {
                     if let Ok(d) = parse_duration_ms(attr_str_value(&attr.value)) {
                         duration_ms = d;
