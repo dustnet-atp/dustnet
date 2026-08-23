@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1
+#
+# The base image the DUSTNET sites are built on.
+#
+# A site is pages plus a server, and until now every site image built the server
+# itself: each of dustnet-site, dusthub-site and dustnews-site carried a
+# `FROM rust:...` builder, a checkout of this repository staged beside it, and a
+# from-scratch compile of about 150 crates on every deploy. Three copies of one
+# build, each free to drift, and each needing this repository on disk to deploy
+# a change to a page. This image is that build done once and published, so a
+# site needs neither a Rust toolchain nor a checkout of the software it runs.
+#
+# Separate from Dockerfile, which publishes the *client* — the terminal browser
+# people install to read Dustnet. That image says it is the reference client and
+# should stay true; a server and a build tool do not belong in it. Two images,
+# two purposes, one repository.
+#
+# Both binaries a site needs, because a site build has two halves and this is
+# the base for the whole thing:
+#
+#   dustnet-prerender-figlet  build time — turns authored pages into served ones
+#   dustnetd                  run time   — serves them
+#
+# Build it with `make docker-dustnetd`, publish it with `make docker-dustnetd-publish`.
+
+FROM rust:1.94-bookworm AS build
+
+# cmake is needed by a transitive build dependency of the TLS stack. The client
+# image does without it; dustnetd terminates TLS itself and does not.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+# The prerenderer is its own workspace — excluded from the root one, so it is a
+# second `cargo install` and not a second `-p`. Both land in the same --root,
+# which is what makes the runtime stage a two-line copy.
+RUN cargo install --locked --path crates/dustnetd --root /out \
+    && cargo install --locked --path tools/prerender-figlet --root /out
+
+# bookworm, not the trixie the client image runs on. It is what all three sites
+# already serve from with these binaries, and a base image is the wrong place to
+# find out that a glibc moved. The builder is bookworm too: built newer than it
+# runs is the direction that breaks.
+FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.source="https://github.com/dustnet-atp/dustnet"
+LABEL org.opencontainers.image.description="The Dustnet server and page prerenderer: the base image DUSTNET sites are built on."
+LABEL org.opencontainers.image.licenses="MIT"
+
+COPY --from=build /out/bin/dustnetd /usr/local/bin/dustnetd
+COPY --from=build /out/bin/dustnet-prerender-figlet /usr/local/bin/dustnet-prerender-figlet
+
+# The default port, and only a default: a site that shares a host with another
+# publishes its own. No CMD, because the certificate paths and the document root
+# belong to the site and guessing them here would be a default nobody can use.
+EXPOSE 1985/tcp
+ENTRYPOINT ["/usr/local/bin/dustnetd"]

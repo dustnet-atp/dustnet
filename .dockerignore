@@ -12,6 +12,12 @@ target/
 # context, so it is not a file the build can miss.
 fuzz/
 tools/
+# ...except the prerenderer, which Dockerfile.dustnetd installs: a site image
+# uses it to turn authored pages into served ones. Its source only — tools/ is
+# excluded mostly because of the build artefacts under it, and those are what
+# the second line puts back out of reach.
+!tools/prerender-figlet/
+tools/prerender-figlet/target/
 effects/
 examples/
 docs/
@@ -20,5 +26,6 @@ supply-chain/
 .github/
 *.md
 Dockerfile
+Dockerfile.dustnetd
 .dockerignore
 Makefile

@@ -6,7 +6,7 @@ SHELL := /bin/bash
 SITE_DIR ?=
 SITE_BUILD := target/site
 
-.PHONY: ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check fuzz-periodic effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
+.PHONY: ci ci-preflight ci-publish-dryrun docker-image docker-run docker-check docker-publish docker-dustnetd docker-dustnetd-check docker-dustnetd-publish install install-check build-release ci-fmt ci-clippy ci-boundaries ci-tests ci-tools ci-docs ci-deps ci-full ci-fuzz-smoke ci-miri ci-miri-core ci-miri-compositor ci-asan test build check allocation-audit fuzz-campaign-check fuzz-periodic effects clean site-builder-check site serve client dev-server dev-client fuzz fuzz-campaign fuzz-check fuzz-scanner fuzz-parser fuzz-pipeline fuzz-protocol fuzz-uri fuzz-protocol-state fuzz-viewer-state
 
 # ─── Local verification gate ─────────────────────────────────
 #
@@ -286,6 +286,15 @@ IMAGE_NAME ?= dustnet-atp/dustnet
 PLATFORMS  ?= linux/amd64,linux/arm64
 IMAGE      := $(REGISTRY)/$(IMAGE_NAME)
 
+# The sites' base image, published from Dockerfile.dustnetd. A second name
+# rather than a second tag on the first: the client image is what someone
+# installs to browse Dustnet, and a server sharing its name would be found by
+# people who wanted the browser. Same registry, same version, same platforms —
+# a site runs on whatever the person deploying it runs on, and half of those
+# machines are Apple Silicon too.
+IMAGE_DUSTNETD_NAME ?= dustnet-atp/dustnetd
+IMAGE_DUSTNETD      := $(REGISTRY)/$(IMAGE_DUSTNETD_NAME)
+
 # Read out of Cargo.toml, never restated. The README carried a hand-written
 # `--version 0.2.0-alpha.4` that outlived the bump to 0.2.0, and dustnet-www
 # still tells people to `cargo install --path crates/dustnet-cli` for a crate
@@ -338,6 +347,42 @@ docker-publish:
 		       -t $(IMAGE):$(VERSION) -t $(IMAGE):latest . ;; \
 	esac
 	@echo "── pushed $(IMAGE):$(VERSION) ──"
+
+# ─── The sites' base image ───────────────────────────────────
+#
+# Same three shapes as the client image above and for the same reasons: one
+# architecture loaded locally so it can be run, both architectures discarded as
+# a pre-release check, both architectures pushed to publish.
+
+docker-dustnetd:
+	@echo "── build $(IMAGE_DUSTNETD):$(VERSION) for this machine ──"
+	docker buildx build --load -f Dockerfile.dustnetd \
+		-t $(IMAGE_DUSTNETD):$(VERSION) -t dustnetd:latest .
+	@echo "── built; a site can now build FROM dustnetd:latest ──"
+
+docker-dustnetd-check:
+	@echo "── cross build $(PLATFORMS), no push ──"
+	docker buildx build --platform $(PLATFORMS) -f Dockerfile.dustnetd \
+		--output=type=cacheonly .
+	@echo "── both architectures build ──"
+
+# The clean-tree requirement carries further here than it does for the client.
+# An image built from a dirty tree matches no revision, and this one is a *base*:
+# every site built on it inherits that, and a site image is the thing actually
+# serving when someone asks which version is running.
+docker-dustnetd-publish:
+	@test -z "$$(git status --porcelain)" \
+		|| { echo "  working tree is dirty; an image built from it matches no commit"; exit 1; }
+	@echo "── push $(IMAGE_DUSTNETD):$(VERSION) for $(PLATFORMS) ──"
+	@case "$(VERSION)" in \
+		*-*) echo "  pre-release: tagging $(VERSION) only, not latest"; \
+		     docker buildx build --platform $(PLATFORMS) --push \
+		       -f Dockerfile.dustnetd -t $(IMAGE_DUSTNETD):$(VERSION) . ;; \
+		*)   docker buildx build --platform $(PLATFORMS) --push \
+		       -f Dockerfile.dustnetd \
+		       -t $(IMAGE_DUSTNETD):$(VERSION) -t $(IMAGE_DUSTNETD):latest . ;; \
+	esac
+	@echo "── pushed $(IMAGE_DUSTNETD):$(VERSION) ──"
 
 ci-docs:
 	@echo "── doctests, docs, locked release build ──"

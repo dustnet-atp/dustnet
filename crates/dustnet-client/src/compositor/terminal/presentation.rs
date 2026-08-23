@@ -47,6 +47,24 @@ pub(super) const MAX_COMMAND_MESSAGE_BYTES: usize = 2_048;
 pub(super) enum ClientHudTab {
     History,
     Errors,
+    Sessions,
+}
+
+/// One remembered session, as the HUD shows it.
+///
+/// Without the token, deliberately. The store file warns that anyone who can
+/// read it is logged in as you; putting a token on screen would make that true
+/// of anyone who can see the terminal, and the HUD is a surface people open in
+/// front of other people.
+#[derive(Debug, Clone)]
+pub(super) struct SessionRow {
+    pub(super) origin: String,
+    pub(super) security: String,
+    pub(super) scope: String,
+    /// Seconds until expiry; negative means it has already passed.
+    pub(super) expires_in: Option<i64>,
+    /// Whether this one survives the client exiting.
+    pub(super) persistent: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -214,6 +232,7 @@ pub(super) struct ClientHud {
     pub(super) tab: ClientHudTab,
     pub(super) history_selected: usize,
     pub(super) error_selected: usize,
+    pub(super) session_selected: usize,
     pub(super) last_tick: std::time::Instant,
 }
 
@@ -225,6 +244,7 @@ impl ClientHud {
             tab: ClientHudTab::History,
             history_selected: 0,
             error_selected: 0,
+            session_selected: 0,
             last_tick: std::time::Instant::now(),
         }
     }
@@ -298,6 +318,7 @@ impl ClientHud {
         code: KeyCode,
         history_len: usize,
         error_len: usize,
+        session_len: usize,
     ) -> ClientHudAction {
         match code {
             KeyCode::Char('`') => {
@@ -309,19 +330,36 @@ impl ClientHud {
                 self.close();
                 ClientHudAction::Redraw
             }
-            KeyCode::Tab | KeyCode::BackTab => {
+            KeyCode::Tab => {
                 self.tab = match self.tab {
                     ClientHudTab::History => ClientHudTab::Errors,
+                    ClientHudTab::Errors => ClientHudTab::Sessions,
+                    ClientHudTab::Sessions => ClientHudTab::History,
+                };
+                ClientHudAction::Redraw
+            }
+            KeyCode::BackTab => {
+                self.tab = match self.tab {
+                    ClientHudTab::History => ClientHudTab::Sessions,
                     ClientHudTab::Errors => ClientHudTab::History,
+                    ClientHudTab::Sessions => ClientHudTab::Errors,
                 };
                 ClientHudAction::Redraw
             }
             KeyCode::Left | KeyCode::Char('h') => {
-                self.tab = ClientHudTab::History;
+                self.tab = match self.tab {
+                    ClientHudTab::History => ClientHudTab::Sessions,
+                    ClientHudTab::Errors => ClientHudTab::History,
+                    ClientHudTab::Sessions => ClientHudTab::Errors,
+                };
                 ClientHudAction::Redraw
             }
             KeyCode::Right | KeyCode::Char('l') => {
-                self.tab = ClientHudTab::Errors;
+                self.tab = match self.tab {
+                    ClientHudTab::History => ClientHudTab::Errors,
+                    ClientHudTab::Errors => ClientHudTab::Sessions,
+                    ClientHudTab::Sessions => ClientHudTab::History,
+                };
                 ClientHudAction::Redraw
             }
             KeyCode::Up | KeyCode::Char('k') => {
@@ -331,6 +369,9 @@ impl ClientHud {
                     }
                     ClientHudTab::Errors => {
                         self.error_selected = self.error_selected.saturating_sub(1)
+                    }
+                    ClientHudTab::Sessions => {
+                        self.session_selected = self.session_selected.saturating_sub(1)
                     }
                 }
                 ClientHudAction::Redraw
@@ -343,6 +384,9 @@ impl ClientHud {
                     ClientHudTab::Errors if error_len > 0 => {
                         self.error_selected = (self.error_selected + 1).min(error_len - 1);
                     }
+                    ClientHudTab::Sessions if session_len > 0 => {
+                        self.session_selected = (self.session_selected + 1).min(session_len - 1);
+                    }
                     _ => {}
                 }
                 ClientHudAction::Redraw
@@ -351,6 +395,7 @@ impl ClientHud {
                 match self.tab {
                     ClientHudTab::History => self.history_selected = 0,
                     ClientHudTab::Errors => self.error_selected = 0,
+                    ClientHudTab::Sessions => self.session_selected = 0,
                 }
                 ClientHudAction::Redraw
             }
@@ -358,6 +403,7 @@ impl ClientHud {
                 match self.tab {
                     ClientHudTab::History => self.history_selected = history_len.saturating_sub(1),
                     ClientHudTab::Errors => self.error_selected = error_len.saturating_sub(1),
+                    ClientHudTab::Sessions => self.session_selected = session_len.saturating_sub(1),
                 }
                 ClientHudAction::Redraw
             }

@@ -1381,6 +1381,7 @@ fn present_pass(
     history: &[HistoryEntry],
     logical_history: &[crate::viewer::HistoryEntry],
     history_idx: usize,
+    sessions: &[SessionRow],
 ) -> io::Result<bool> {
     // Stages 6 + 7 in sequence: composite layers to a single buffer,
     // then emit ANSI. Page transitions flow through the composite walk
@@ -1416,6 +1417,7 @@ fn present_pass(
         logical_history,
         history_idx,
         page.anim_rt.total_wasm_memory(),
+        sessions,
     )?;
     Ok(true)
 }
@@ -3568,6 +3570,16 @@ async fn viewer_main_loop(
                 .client
                 .as_ref()
                 .and_then(|client| client.current_security());
+            // Read fresh every frame for the same reason as `security`: a page
+            // load can grant, replace or clear a session, and a HUD showing a
+            // stale list is the problem this tab was added to solve.
+            let session_snapshot = session_rows(
+                runtime.client.as_ref(),
+                runtime
+                    .client
+                    .as_ref()
+                    .is_some_and(|client| client.sessions_are_persistent()),
+            );
             let presented = present_pass(
                 &mut stdout,
                 &mut runtime.compositor,
@@ -3586,6 +3598,7 @@ async fn viewer_main_loop(
                 &runtime.history,
                 &lifecycle.history,
                 history_idx,
+                &session_snapshot,
             )?;
             if !presented && !runtime.page.client_owned_error {
                 let Some(retired_scope) = lifecycle.try_scope_clone() else {
@@ -3674,6 +3687,7 @@ async fn viewer_main_loop(
                         key.code,
                         lifecycle.history.len(),
                         runtime.error_log.entries.len(),
+                        session_rows(runtime.client.as_ref(), false).len(),
                     ) {
                         ClientHudAction::None => ViewerAction::None,
                         ClientHudAction::Redraw => {
@@ -6748,6 +6762,54 @@ fn write_help_modal(out: &mut impl Write, state: &ViewportState) -> io::Result<(
     )
 }
 
+/// Snapshot the remembered sessions for the HUD.
+///
+/// Taken per frame rather than cached, because a session can be granted,
+/// replaced or cleared by any page load and a stale list is worse than none --
+/// the whole reason this tab exists is that "restored 1 remembered session" told
+/// a reader something was in effect without saying what.
+///
+/// Never carries the token. The store file warns that anyone who can read it is
+/// logged in as you; a token on screen makes that true of anyone who can see the
+/// terminal, and a HUD is something people open while sharing a screen.
+fn session_rows(client: Option<&AtpClient>, persistent: bool) -> Vec<SessionRow> {
+    let Some(client) = client else {
+        return Vec::new();
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0) as i64;
+    let mut rows = Vec::new();
+    for (origin, site) in client.sessions().iter_sites() {
+        for token in site.list_tokens() {
+            rows.push(SessionRow {
+                origin: format!("{}:{}", origin.host(), origin.port()),
+                // Matched here rather than reaching for the core crate's own
+                // label, which is private: the HUD is the only caller that wants
+                // these as words, and widening a published API for one screen is
+                // the wrong trade.
+                security: match origin.security() {
+                    dustnet_core::protocol::origin::TransportSecurity::VerifiedTls => "verified",
+                    dustnet_core::protocol::origin::TransportSecurity::PinnedTls => "pinned",
+                    dustnet_core::protocol::origin::TransportSecurity::InsecureTls => "unverified",
+                    dustnet_core::protocol::origin::TransportSecurity::PlaintextLoopback => {
+                        "plaintext"
+                    }
+                }
+                .to_string(),
+                scope: token.scope.clone(),
+                expires_in: token.expires.map(|e| e as i64 - now),
+                persistent,
+            });
+        }
+    }
+    // Soonest to expire first: the ones about to lapse are the ones worth seeing.
+    // No-expiry sessions sort last, since they never become urgent.
+    rows.sort_by_key(|row| row.expires_in.unwrap_or(i64::MAX));
+    rows
+}
+
 /// Paint the tabbed client HUD directly over the top of the viewport. The
 /// number of rows comes from the animation progress, producing a clipped
 /// console that appears to descend from the terminal's top edge.
@@ -6759,6 +6821,7 @@ fn write_client_hud(
     history: &[HistoryEntry],
     logical_history: &[crate::viewer::HistoryEntry],
     history_idx: usize,
+    sessions: &[SessionRow],
 ) -> io::Result<()> {
     let height = hud.visible_rows(state.viewport_height());
     let width = state.term_w;
@@ -6769,12 +6832,19 @@ fn write_client_hud(
     let inner_w = width.saturating_sub(2) as usize;
     let title = match hud.tab {
         ClientHudTab::History => try_format(format_args!(
-            " DUSTNET HUD  [HISTORY]  ERRORS ({}) ",
-            error_log.total_count()
+            " DUSTNET HUD  [HISTORY]  ERRORS ({})  SESSIONS ({}) ",
+            error_log.total_count(),
+            sessions.len()
         ))?,
         ClientHudTab::Errors => try_format(format_args!(
-            " DUSTNET HUD   HISTORY  [ERRORS ({})] ",
-            error_log.total_count()
+            " DUSTNET HUD   HISTORY  [ERRORS ({})]  SESSIONS ({}) ",
+            error_log.total_count(),
+            sessions.len()
+        ))?,
+        ClientHudTab::Sessions => try_format(format_args!(
+            " DUSTNET HUD   HISTORY  ERRORS ({})  [SESSIONS ({})] ",
+            error_log.total_count(),
+            sessions.len()
         ))?,
     };
     let (title, title_width) = display_width_prefix(&title, inner_w);
@@ -6802,6 +6872,10 @@ fn write_client_hud(
             hud.error_selected
                 .min(error_log.entries.len().saturating_sub(1)),
             error_log.entries.len(),
+        ),
+        ClientHudTab::Sessions => (
+            hud.session_selected.min(sessions.len().saturating_sub(1)),
+            sessions.len(),
         ),
     };
     let start = selected
@@ -6855,6 +6929,47 @@ fn write_client_hud(
                     (String::new(), false, false)
                 }
             }
+            ClientHudTab::Sessions => {
+                if let Some(entry) = sessions.get(item_pos) {
+                    let cursor = if item_pos == selected { ">" } else { " " };
+                    // Expiry as a duration rather than a timestamp: "in 13h" is
+                    // the question someone has, and an epoch second is not an
+                    // answer to it. A lapsed session is still shown -- it is why
+                    // a site says you are logged out while the client says it
+                    // restored something.
+                    let life = match entry.expires_in {
+                        None => try_copy("no expiry")?,
+                        Some(secs) if secs <= 0 => try_copy("EXPIRED")?,
+                        Some(secs) if secs < 3600 => try_format(format_args!("in {}m", secs / 60))?,
+                        Some(secs) if secs < 172_800 => {
+                            try_format(format_args!("in {}h", secs / 3600))?
+                        }
+                        Some(secs) => try_format(format_args!("in {}d", secs / 86_400))?,
+                    };
+                    let kept = if entry.persistent {
+                        "remembered"
+                    } else {
+                        "this run"
+                    };
+                    let lapsed = matches!(entry.expires_in, Some(secs) if secs <= 0);
+                    (
+                        try_format(format_args!(
+                            " {cursor}  {}  {}  scope {}  {}  {}",
+                            entry.origin, entry.security, entry.scope, life, kept
+                        ))?,
+                        item_pos == selected,
+                        lapsed,
+                    )
+                } else if sessions.is_empty() && row == 0 {
+                    (
+                        try_copy("  No sessions. Logging in to a site puts one here.")?,
+                        false,
+                        false,
+                    )
+                } else {
+                    (String::new(), false, false)
+                }
+            }
         };
 
         let (display, display_width) = display_width_prefix(&content, inner_w);
@@ -6889,6 +7004,10 @@ fn write_client_hud(
             " ` / Esc close  ·  Tab / ←→ switch  ·  ↑↓ select  ·  c clear "
         }
         (ClientHudTab::Errors, false) => " Tab switch · ↑↓ select · c clear · ` close ",
+        (ClientHudTab::Sessions, true) => {
+            " ` / Esc close  ·  Tab / ←→ switch  ·  ↑↓ select  ·  :sessions clear to log out "
+        }
+        (ClientHudTab::Sessions, false) => " Tab switch · ↑↓ select · ` close ",
     };
     let omitted = error_log.omitted_count();
     let footer = if hud.tab == ClientHudTab::Errors && omitted > 0 {
@@ -6939,6 +7058,7 @@ fn draw_viewer_frame(
     logical_history: &[crate::viewer::HistoryEntry],
     history_idx: usize,
     wasm_mem_bytes: usize,
+    sessions: &[SessionRow],
 ) -> io::Result<()> {
     if !client_hud.is_active() {
         return draw_viewer_frame_inner(
@@ -6964,6 +7084,7 @@ fn draw_viewer_frame(
             logical_history,
             history_idx,
             wasm_mem_bytes,
+            sessions,
         );
     }
 
@@ -6995,6 +7116,7 @@ fn draw_viewer_frame(
         logical_history,
         history_idx,
         wasm_mem_bytes,
+        sessions,
     )
     .and_then(|()| write_synchronized_update(out, frame.as_slice()));
     if result.is_err() {
@@ -7074,6 +7196,7 @@ fn draw_viewer_frame_inner(
     logical_history: &[crate::viewer::HistoryEntry],
     history_idx: usize,
     wasm_mem_bytes: usize,
+    sessions: &[SessionRow],
 ) -> io::Result<()> {
     // Render scrollable content. Phase 4 of
     // the composite-unification migration: `present_main` diffs
@@ -7268,6 +7391,7 @@ fn draw_viewer_frame_inner(
             history,
             logical_history,
             history_idx,
+            sessions,
         )?;
     }
 

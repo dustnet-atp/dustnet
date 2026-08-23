@@ -2145,10 +2145,13 @@ fn client_hud_selects_and_opens_history_entries() {
     assert!(hud.is_active());
     assert_eq!(hud.history_selected, 2);
 
-    assert_eq!(hud.handle_key(KeyCode::Up, 4, 0), ClientHudAction::Redraw);
+    assert_eq!(
+        hud.handle_key(KeyCode::Up, 4, 0, 0),
+        ClientHudAction::Redraw
+    );
     assert_eq!(hud.history_selected, 1);
     assert_eq!(
-        hud.handle_key(KeyCode::Enter, 4, 0),
+        hud.handle_key(KeyCode::Enter, 4, 0, 0),
         ClientHudAction::OpenHistory(1)
     );
     assert!(!hud.target_open);
@@ -2158,13 +2161,13 @@ fn client_hud_selects_and_opens_history_entries() {
 fn client_hud_navigation_stops_at_ends() {
     let mut hud = ClientHud::new();
     hud.toggle(0, 3);
-    hud.handle_key(KeyCode::Up, 3, 0);
+    hud.handle_key(KeyCode::Up, 3, 0, 0);
     assert_eq!(hud.history_selected, 0);
-    hud.handle_key(KeyCode::End, 3, 0);
+    hud.handle_key(KeyCode::End, 3, 0, 0);
     assert_eq!(hud.history_selected, 2);
-    hud.handle_key(KeyCode::Down, 3, 0);
+    hud.handle_key(KeyCode::Down, 3, 0, 0);
     assert_eq!(hud.history_selected, 2);
-    hud.handle_key(KeyCode::Home, 3, 0);
+    hud.handle_key(KeyCode::Home, 3, 0, 0);
     assert_eq!(hud.history_selected, 0);
 }
 
@@ -2206,6 +2209,7 @@ fn client_hud_renders_history_tab_titles_uris_and_current_marker() {
         &history,
         &logical_history,
         0,
+        &[],
     )
     .unwrap();
     let rendered = String::from_utf8(output).unwrap();
@@ -2303,12 +2307,15 @@ fn client_hud_switches_tabs_and_clears_errors() {
     hud.toggle(0, 1);
     assert_eq!(hud.tab, ClientHudTab::History);
 
-    assert_eq!(hud.handle_key(KeyCode::Tab, 1, 2), ClientHudAction::Redraw);
+    assert_eq!(
+        hud.handle_key(KeyCode::Tab, 1, 2, 0),
+        ClientHudAction::Redraw
+    );
     assert_eq!(hud.tab, ClientHudTab::Errors);
-    hud.handle_key(KeyCode::End, 1, 2);
+    hud.handle_key(KeyCode::End, 1, 2, 0);
     assert_eq!(hud.error_selected, 1);
     assert_eq!(
-        hud.handle_key(KeyCode::Char('c'), 1, 2),
+        hud.handle_key(KeyCode::Char('c'), 1, 2, 0),
         ClientHudAction::ClearErrors
     );
 }
@@ -2325,12 +2332,96 @@ fn client_hud_renders_grouped_error_counts() {
     hud.open_errors(Some(0));
 
     let mut output = Vec::new();
-    write_client_hud(&mut output, &state, &hud, &errors, &[], &[], 0).unwrap();
+    write_client_hud(&mut output, &state, &hud, &errors, &[], &[], 0, &[]).unwrap();
     let rendered = String::from_utf8(output).unwrap();
     assert!(rendered.contains("[ERRORS (2)]"));
     assert!(rendered.contains("×2"));
     assert!(rendered.contains("WASM memory limit exceeded"));
     assert!(rendered.contains("c clear"));
+}
+
+/// The Sessions tab shows what was restored, and never the token.
+///
+/// "restored 1 remembered session" is printed at startup from a count of lines
+/// in a file, before any connection exists -- it cannot say which origin, or
+/// whether a server still honours it. This tab is where that becomes answerable,
+/// so it has to name the origin and show the expiry, and it must not show the
+/// credential: a HUD is something people open while sharing a screen.
+#[test]
+fn client_hud_sessions_tab_names_origins_without_tokens() {
+    let state = ViewportState::new(90, 12, 12);
+    let mut hud = ClientHud::new();
+    hud.progress = 1.0;
+    hud.target_open = true;
+    hud.tab = ClientHudTab::Sessions;
+    let errors = ErrorLog::new();
+    let sessions = [
+        SessionRow {
+            origin: "news.dustnet.io:1986".into(),
+            security: "verified".into(),
+            scope: "/".into(),
+            expires_in: Some(46_862),
+            persistent: true,
+        },
+        SessionRow {
+            origin: "hub.dustnet.io:1987".into(),
+            security: "pinned".into(),
+            scope: "/submit".into(),
+            expires_in: Some(-5),
+            persistent: false,
+        },
+    ];
+    let mut output = Vec::new();
+    write_client_hud(&mut output, &state, &hud, &errors, &[], &[], 0, &sessions).unwrap();
+    let rendered = String::from_utf8(output).unwrap();
+
+    assert!(rendered.contains("[SESSIONS (2)]"), "tab must be selected");
+    assert!(rendered.contains("news.dustnet.io:1986"));
+    assert!(rendered.contains("hub.dustnet.io:1987"));
+    assert!(rendered.contains("verified"));
+    assert!(rendered.contains("/submit"), "scope must be shown");
+    assert!(
+        rendered.contains("in 13h"),
+        "expiry as a duration, not an epoch"
+    );
+    assert!(
+        rendered.contains("EXPIRED"),
+        "a lapsed session is exactly what explains being logged out"
+    );
+    assert!(
+        rendered.contains("remembered"),
+        "persistence must be visible"
+    );
+}
+
+/// An empty store says so, rather than looking like a broken tab.
+#[test]
+fn client_hud_sessions_tab_is_explicit_when_empty() {
+    let state = ViewportState::new(90, 12, 12);
+    let mut hud = ClientHud::new();
+    hud.progress = 1.0;
+    hud.target_open = true;
+    hud.tab = ClientHudTab::Sessions;
+    let errors = ErrorLog::new();
+    let mut output = Vec::new();
+    write_client_hud(&mut output, &state, &hud, &errors, &[], &[], 0, &[]).unwrap();
+    let rendered = String::from_utf8(output).unwrap();
+    assert!(rendered.contains("No sessions"));
+}
+
+/// Tab cycles through all three, and BackTab goes the other way.
+#[test]
+fn client_hud_tab_cycles_three_tabs_both_ways() {
+    let mut hud = ClientHud::new();
+    assert_eq!(hud.tab, ClientHudTab::History);
+    hud.handle_key(KeyCode::Tab, 0, 0, 0);
+    assert_eq!(hud.tab, ClientHudTab::Errors);
+    hud.handle_key(KeyCode::Tab, 0, 0, 0);
+    assert_eq!(hud.tab, ClientHudTab::Sessions);
+    hud.handle_key(KeyCode::Tab, 0, 0, 0);
+    assert_eq!(hud.tab, ClientHudTab::History, "Tab wraps round");
+    hud.handle_key(KeyCode::BackTab, 0, 0, 0);
+    assert_eq!(hud.tab, ClientHudTab::Sessions, "BackTab goes backwards");
 }
 
 #[test]
@@ -2410,6 +2501,7 @@ fn terminal_hud_text_rejection_restores_the_presented_baseline() {
             &[],
             0,
             0,
+            &[],
         )
         .is_err()
     );
@@ -2438,6 +2530,7 @@ fn terminal_hud_text_rejection_restores_the_presented_baseline() {
         &[],
         0,
         0,
+        &[],
     )
     .unwrap();
     assert!(terminal.starts_with(b"\x1b[?2026h"));
