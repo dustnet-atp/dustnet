@@ -795,6 +795,58 @@ mod tests {
         assert_eq!(transition.blend_cell(9, 3).map(|c| c.ch), Some('╯'));
     }
 
+    /// `DrawLeft` is exactly `DrawRight` reflected, at every instant.
+    ///
+    /// The strongest statement of "the opposite of draw-right" available: with
+    /// uniform old and new fills the character content carries no left/right
+    /// information, so all that is compared is *which* cells have flipped. If
+    /// DrawLeft's cell at x matches DrawRight's at w-1-x for every cell at every
+    /// sampled time, the two differ only in direction.
+    ///
+    /// Uniform fills are the point. A bordered box would make the frontier
+    /// column's authored-edge sample differ between the two -- left edge versus
+    /// right -- and that is content, not geometry.
+    #[test]
+    fn draw_left_is_draw_right_reflected() {
+        const W: u16 = 12;
+        const H: u16 = 5;
+        let build = |kind| {
+            let (_scene, node) = panel_scene(W, H);
+            let rect = Rect::new(0, 0, W, H);
+            let t = TransitionAdapter::new(
+                "draw".into(),
+                node,
+                rect,
+                fill(W, H, 'A'),
+                rect,
+                fill(W, H, 'B'),
+                rect,
+                kind,
+                1000,
+            );
+            (_scene, t)
+        };
+        let (_sr, mut right) = build(TransitionKind::DrawRight);
+        let (_sl, mut left) = build(TransitionKind::DrawLeft);
+
+        for ms in [0u32, 100, 250, 400, 500, 600, 750, 900, 1000] {
+            right.elapsed_ms = ms;
+            left.elapsed_ms = ms;
+            for y in 0..H {
+                for x in 0..W {
+                    let r = right.blend_cell(x, y).map(|c| c.ch);
+                    let l = left.blend_cell(W - 1 - x, y).map(|c| c.ch);
+                    assert_eq!(
+                        r,
+                        l,
+                        "at {ms}ms, draw-right ({x},{y}) should equal draw-left ({},{y})",
+                        W - 1 - x
+                    );
+                }
+            }
+        }
+    }
+
     /// The mirror of `draw_right_traces_left_edge_before_revealing_columns`.
     ///
     /// Asserted as the reflection rather than as fresh expectations: the point of
