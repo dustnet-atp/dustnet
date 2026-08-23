@@ -1,14 +1,13 @@
 ```
-                   https://dustnet.io | atp://dustnet.io
 
-        ██████╗ ██╗   ██╗███████╗████████╗███╗   ██╗███████╗████████╗
-        ██╔══██╗██║   ██║██╔════╝╚══██╔══╝████╗  ██║██╔════╝╚══██╔══╝
-        ██║  ██║██║   ██║███████╗   ██║   ██╔██╗ ██║█████╗     ██║
-        ██║  ██║██║   ██║╚════██║   ██║   ██║╚██╗██║██╔══╝     ██║
-        ██████╔╝╚██████╔╝███████║   ██║   ██║ ╚████║███████╗   ██║
-        ╚═════╝  ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚══════╝   ╚═╝
+   ██████╗ ██╗   ██╗███████╗████████╗███╗   ██╗███████╗████████╗
+   ██╔══██╗██║   ██║██╔════╝╚══██╔══╝████╗  ██║██╔════╝╚══██╔══╝
+   ██║  ██║██║   ██║███████╗   ██║   ██╔██╗ ██║█████╗     ██║
+   ██║  ██║██║   ██║╚════██║   ██║   ██║╚██╗██║██╔══╝     ██║
+   ██████╔╝╚██████╔╝███████║   ██║   ██║ ╚████║███████╗   ██║
+   ╚═════╝  ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚══════╝   ╚═╝
 
-                 ANSI TERMINAL PROTOCOL NETWORK * Est. 2026
+            ANSI TERMINAL PROTOCOL NETWORK * Est. 2026
 
 
 This repository is the reference implementation: the client, the server, and
@@ -22,3 +21,5 @@ Deploy a site and add it to the HUB. Argue on the NEWS board. Leave something
 behind. This is the network where the dust gathers.
 
 ```
+
+Connect: [https://dustnet.io](https://dustnet.io)
