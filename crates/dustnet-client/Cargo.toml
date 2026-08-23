@@ -1,6 +1,6 @@
 [package]
 name = "dustnet-client"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 description = "Dustnet client library: transport, viewer, compositor, and AML/WASM runtime"
@@ -12,7 +12,7 @@ categories = ["network-programming", "command-line-interface"]
 
 [dependencies]
 arrayvec = "0.7"
-dustnet-core = { path = "../dustnet-core", version = "=0.2.1" }
+dustnet-core = { path = "../dustnet-core", version = "=0.3.0" }
 # Already in the graph via rustls; named directly for SHA-256 certificate
 # fingerprints in `trust`, so no crate enters the tree that was not vetted.
 ring = "0.17"
@@ -32,7 +32,7 @@ signal-hook = "0.3"
 triomphe = { version = "=0.1.16", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-dustnet-server = { path = "../dustnet-server", version = "=0.2.1" }
+dustnet-server = { path = "../dustnet-server", version = "=0.3.0" }
 tempfile = "3"
 # Tests only: reads the machine-readable claims under `verification/` so no
 # test parses prose. Already in the workspace lock via tracing-subscriber.

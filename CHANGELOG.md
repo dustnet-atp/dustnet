@@ -1,9 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-08-23
 
 ### Added
 
+- A Sessions tab in the client HUD, listing each remembered session by origin,
+  transport security, scope, time remaining and whether it survives the client
+  exiting — never the token. `restored N remembered sessions` is printed at
+  startup from a count of lines in a file and cannot say which origin it means or
+  whether a server still honours it; an expired row here is what explains a site
+  treating you as anonymous.
 - `draw-left`, the mirror of `draw-right`: traces the box's right edge, then
   unfurls columns leftward. Available to panel states and page transitions
   alike, since both dispatch on the same kind.
@@ -14,6 +20,20 @@
   element count, so a fully coloured block costs no more elements than a plain
   one. That distinction is what makes a coloured `[art]` at the 200×200 limit
   representable at all.
+
+### Changed
+
+- The image-publishing workflow covers `dustnetd` as well as the client, as a
+  matrix over both rather than a second copy of the job. `dustnetd` previously
+  had no CI path at all and could only be published by hand, which meant a GHCR
+  login and a clean tree on somebody's laptop -- and the base image every site
+  is built on is the last thing that should depend on that.
+- The HUD's `Tab` steps forward through three tabs and `Shift-Tab` back, rather
+  than both toggling between two; the arrow keys step rather than jumping to a
+  fixed end.
+- An unrecognised `transition` name now warns (`W008`) instead of silently
+  becoming a cut. A typo, or a name from a build newer than the client reading
+  the page, was indistinguishable from an authored cut.
 
 ### Fixed
 

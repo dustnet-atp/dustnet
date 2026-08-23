@@ -22,9 +22,13 @@ SITE_BUILD := target/site
 # own right rather than a consequence of going public.
 #
 # One hosted workflow does exist: .github/workflows/publish-image.yml builds
-# the container image on a tag. It is Linux, it runs a few times a year, and
-# it produces the one artefact no single machine can: a manifest list covering
-# both amd64 and arm64.
+# both container images -- the client and the server base -- on a tag. It is
+# Linux, it runs a few times a year, and it produces the one artefact no single
+# machine can: a manifest list covering both amd64 and arm64.
+#
+# The docker-*-publish targets below remain for publishing by hand. They need a
+# GHCR login; the workflow does not, because the built-in GITHUB_TOKEN can write
+# packages owned by this repository.
 #
 #   make test           fast inner loop — use while working        (~10s)
 #   make ci             the full gate — before every commit       (minutes)

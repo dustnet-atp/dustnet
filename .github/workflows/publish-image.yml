@@ -1,4 +1,10 @@
-# Publishes the client container image to GHCR.
+# Publishes the container images to GHCR: the client, and the server base the
+# sites are built on.
+#
+# One workflow over a matrix rather than one per image. The version check, the
+# per-architecture native builds, the digest-and-merge dance and — most of all —
+# the full-length action SHAs all have to be identical for both, and two files
+# holding the same pins is two places for them to drift apart.
 #
 # This is the only hosted job in the repository, and that is deliberate. The
 # verification gate runs locally on macOS — `make ci` — because macOS runners
@@ -26,9 +32,6 @@ on:
 permissions:
   contents: read
   packages: write
-
-env:
-  IMAGE: ghcr.io/dustnet-atp/dustnet
 
 jobs:
   # Cargo.toml is the single source of the version; the tag is checked against
@@ -79,15 +82,25 @@ jobs:
     needs: version
     strategy:
       fail-fast: false
+      # A cross product, not a list: each image is built once per architecture,
+      # and adding a third image later means one more entry rather than another
+      # copy of the whole job.
       matrix:
-        include:
+        image:
+          - name: dustnet
+            repo: ghcr.io/dustnet-atp/dustnet
+            file: Dockerfile
+          - name: dustnetd
+            repo: ghcr.io/dustnet-atp/dustnetd
+            file: Dockerfile.dustnetd
+        target:
           - platform: linux/amd64
             arch: amd64
             runner: ubuntu-24.04
           - platform: linux/arm64
             arch: arm64
             runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.target.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -103,13 +116,16 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          platforms: ${{ matrix.platform }}
+          file: ${{ matrix.image.file }}
+          platforms: ${{ matrix.target.platform }}
           provenance: false
-          # Scoped per architecture: one shared scope would have the two
-          # runners evicting each other's layers on every release.
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # Scoped per image *and* architecture. Per architecture alone was
+          # already needed so the two runners do not evict each other; adding a
+          # second image to the same scope would have them doing it again along
+          # the other axis.
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.target.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ matrix.target.arch }}
+          outputs: type=image,name=${{ matrix.image.repo }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Record digest
         run: |
@@ -120,22 +136,35 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: digest-${{ matrix.arch }}
+          # The image name is in here because the merge job globs these: without
+          # it, one image's digests would be merged into the other's manifest.
+          name: digest-${{ matrix.image.name }}-${{ matrix.target.arch }}
           path: /tmp/digests/*
           retention-days: 1
           if-no-files-found: error
 
-  # Assembles the two digests into one multi-arch manifest list and puts the
-  # tags on it, so `docker run ghcr.io/dustnet-atp/dustnet` resolves to the
-  # right architecture without the caller naming one.
+  # Assembles each image's two digests into one multi-arch manifest list and puts
+  # the tags on it, so `docker run ghcr.io/dustnet-atp/dustnet` resolves to the
+  # right architecture without the caller naming one. One job per image, because
+  # a manifest list belongs to exactly one repository.
   merge:
     needs: [version, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: dustnet
+            repo: ghcr.io/dustnet-atp/dustnet
+          - name: dustnetd
+            repo: ghcr.io/dustnet-atp/dustnetd
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: /tmp/digests
-          pattern: digest-*
+          # Only this image's digests. A bare `digest-*` would pull both images
+          # in and hand each manifest list the other's architectures.
+          pattern: digest-${{ matrix.image.name }}-*
           merge-multiple: true
 
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -149,6 +178,7 @@ jobs:
       - name: Create and push manifest list
         working-directory: /tmp/digests
         env:
+          IMAGE: ${{ matrix.image.repo }}
           VERSION: ${{ needs.version.outputs.version }}
           LATEST: ${{ needs.version.outputs.latest }}
         run: |
@@ -163,6 +193,7 @@ jobs:
 
       - name: Verify both architectures are present
         env:
+          IMAGE: ${{ matrix.image.repo }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
