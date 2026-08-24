@@ -443,6 +443,13 @@ pub enum ViewerEvent {
     Reload,
     Back,
     Forward,
+    /// Uncover the history entry the current page is sitting on top of.
+    ///
+    /// A client-owned page — a navigation error, or a local overlay such as
+    /// `:sessions` — is never committed to history, so the entry underneath it
+    /// is still the current one. [`ViewerEvent::Back`] would step off that
+    /// entry instead of returning to it.
+    RestoreCurrentEntry,
     JumpToHistory {
         index: usize,
     },
@@ -1096,13 +1103,26 @@ impl ViewerModel {
         ]
     }
 
+    /// Step to a different history entry. Asking for the one already showing
+    /// is a no-op, so a repeated Back at the start of history does nothing.
     fn activate_history(&mut self, index: usize) -> Vec<ViewerEffect> {
-        let Some(entry) = self.history.get(index) else {
-            return Vec::new();
-        };
         if self.history_position == Some(index) {
             return Vec::new();
         }
+        self.activate_history_entry(index)
+    }
+
+    /// Load `index` from history, whether or not it is the entry already
+    /// showing.
+    ///
+    /// Reloading the current entry is what dismissing a client-owned page —
+    /// a navigation error, or the `:sessions` overlay — has to do: neither is
+    /// a history entry, so both are displayed *over* one, and an ordinary Back
+    /// would step past the page they are covering rather than uncover it.
+    fn activate_history_entry(&mut self, index: usize) -> Vec<ViewerEffect> {
+        let Some(entry) = self.history.get(index) else {
+            return Vec::new();
+        };
         if preparation_rejected() {
             return Vec::new();
         }
@@ -1274,6 +1294,12 @@ impl ViewerModel {
                 };
                 let target = position.saturating_add(1);
                 self.activate_history(target)
+            }
+            ViewerEvent::RestoreCurrentEntry => {
+                let Some(position) = self.history_position else {
+                    return Vec::new();
+                };
+                self.activate_history_entry(position)
             }
             ViewerEvent::JumpToHistory { index } => self.activate_history(index),
             ViewerEvent::FormSubmitted {
@@ -3204,6 +3230,89 @@ mod tests {
             target_scope_host,
         );
         assert_eq!(model.phase, NavigationPhase::Ready);
+    }
+
+    /// Dismissing a client-owned page has to *reload* the current entry, not
+    /// step off it.
+    ///
+    /// A failed destination is never committed to history, so after an error
+    /// page the position still names the page the error is covering. Back
+    /// therefore walks past it to the one before — which is why the renderer
+    /// used to bypass the reducer entirely and re-lay-out the cached AML
+    /// itself, losing every WASM effect on the way.
+    #[test]
+    fn restoring_the_current_entry_reloads_it_where_back_would_step_off() {
+        fn covered_page(generation: u64) -> ViewerModel {
+            let mut model = ViewerModel::new(80, 24);
+            let (first_uri, origin) = target("atp://one.example/first");
+            let (second_uri, _) = target("atp://one.example/second");
+            let showing = PageScope {
+                origin: origin.clone(),
+                generation: 2,
+            };
+            model.history = vec![
+                HistoryEntry {
+                    id: 11,
+                    scope: PageScope {
+                        origin: origin.clone(),
+                        generation: 1,
+                    },
+                    uri: first_uri,
+                    retained_aml: String::from("first"),
+                },
+                HistoryEntry {
+                    id: 12,
+                    scope: showing,
+                    uri: second_uri,
+                    retained_aml: String::from("second"),
+                },
+            ]
+            .into_iter()
+            .collect();
+            model.history_position = Some(1);
+            // What `fail_owned_operation` leaves behind: the failed target is
+            // still the scope, and nothing was committed to history.
+            model.generation = generation;
+            model.scope = Some(PageScope {
+                origin: Origin::from_uri(
+                    &AtpUri::parse("atp://gone.example/").unwrap(),
+                    TransportSecurity::VerifiedTls,
+                )
+                .unwrap(),
+                generation,
+            });
+            model.current_uri = Some(AtpUri::parse("atp://gone.example/").unwrap());
+            model.phase = NavigationPhase::Failed;
+            model.connection = ConnectionStatus::Disconnected;
+            model
+        }
+
+        fn activated(effects: &[ViewerEffect]) -> &HistoryEntry {
+            match effects.last().expect("an activation effect") {
+                ViewerEffect::ActivateCachedHistory { entry, .. } => entry,
+                other => panic!("expected a cached activation, got {other:?}"),
+            }
+        }
+
+        let mut stepping = covered_page(3);
+        assert_eq!(
+            activated(&stepping.reduce(ViewerEvent::Back)).id,
+            11,
+            "Back steps off the covered entry — that is the whole problem"
+        );
+
+        let mut restoring = covered_page(3);
+        let effects = restoring.reduce(ViewerEvent::RestoreCurrentEntry);
+        let entry = activated(&effects);
+
+        assert_eq!(entry.id, 12);
+        assert_eq!(entry.retained_aml, "second");
+        assert_eq!(entry.uri.path(), "/second");
+        // Reactivated rather than merely redrawn: this is the effect that
+        // carries the page back through WASM dependency discovery, which is
+        // the only path that has the modules.
+        assert_eq!(restoring.phase, NavigationPhase::Parsing);
+        assert!(restoring.pending_history.is_some());
     }
 
     #[test]

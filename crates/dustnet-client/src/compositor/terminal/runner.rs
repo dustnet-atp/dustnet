@@ -4179,28 +4179,45 @@ async fn viewer_main_loop(
             ViewerAction::GoBack => {
                 // Dismiss a local overlay (e.g. :sessions) or a client-owned
                 // navigation error by restoring the still-current history
-                // entry. Failed destinations are never committed to history,
-                // so an ordinary history step cannot recover this page.
+                // entry. Neither is committed to history, so both sit on top of
+                // an entry that is still current, and an ordinary history step
+                // would move off it rather than uncover it.
+                //
+                // Through the reducer, not `ActivateLocalPage`. That shortcut
+                // re-laid-out the cached AML directly, and `load_cached` passes
+                // neither a WASM directory nor a prepared batch -- so
+                // `from_scene_with_sources` found no module for any `src=` and
+                // skipped the animation without a word. The page came back with
+                // every WASM effect missing, and on a page that reveals content
+                // with `[on event="animation-end"]` it came back missing that
+                // content too, because the events that would have shown it
+                // belonged to effects that were never built. Restoring through
+                // `RestoreCurrentEntry` re-runs dependency discovery and the
+                // resource fetch, which is the only path that has the modules.
                 if runtime.showing_overlay || runtime.page.client_owned_error {
-                    let cached = logical_history_entry(&lifecycle, history_idx)
-                        .and_then(|entry| entry.try_clone().ok())
-                        .map(|entry| (entry.retained_aml, entry.uri));
-                    if let Some((retained_aml, uri)) = cached {
+                    runtime.showing_overlay = false;
+                    if runtime.client.is_some()
+                        && let Some(ActivatedNavigation::Cached { entry, .. }) =
+                            dispatch_navigation_event(
+                                &mut runtime,
+                                &mut lifecycle,
+                                LifecycleEvent::RestoreCurrentEntry,
+                            )
+                            .await?
+                    {
+                        history_idx = lifecycle.history_position.unwrap_or(history_idx);
+                        debug_assert_eq!(lifecycle.current_uri.as_ref(), Some(&entry.uri));
+                        reset_input_mode(&mut runtime.input_mode);
+                        resubscribe_live(&mut runtime, &mut lifecycle).await?;
                         dispatch_presentation_action(
                             &mut runtime,
                             &mut lifecycle,
-                            PresentationAction::ActivateLocalPage {
-                                aml: retained_aml,
-                                uri: Some(uri),
-                                overlay: false,
-                            },
+                            PresentationAction::PageLoad,
                         )
                         .await?;
-                        if runtime.local_page_activated {
-                            resubscribe_live(&mut runtime, &mut lifecycle).await?;
-                        }
+                        invalidate_compositor_for_new_scene(&mut runtime.compositor);
+                        runtime.needs_redraw = true;
                     }
-                    runtime.showing_overlay = false;
                     continue;
                 }
                 if runtime.client.is_some() && history_idx > 0 {

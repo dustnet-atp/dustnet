@@ -2355,6 +2355,55 @@ CD[/pre]
         assert_eq!(output.get(1, 1).unwrap().ch, 'D');
     }
 
+    /// With neither a directory nor a prepared batch, a `src=` animation is
+    /// dropped without a word — no adapter, no build notice, no scene error.
+    ///
+    /// That silence is the mechanism behind a page coming back visibly broken.
+    /// Dismissing a client-owned error page used to re-lay-out the cached AML
+    /// through `load_cached`, which supplies neither source, so every WASM
+    /// effect vanished; on a page that reveals content with
+    /// `[on event="animation-end"]`, the content went with them, because the
+    /// events belonged to effects that were never built. The restore path goes
+    /// through the reducer now, which fetches the modules first. This pins the
+    /// behaviour that makes doing it any other way wrong.
+    #[test]
+    #[cfg_attr(miri, ignore = "tokio runtime needs kqueue, which Miri cannot emulate")]
+    fn a_wasm_effect_with_no_module_source_is_dropped_in_silence() {
+        let src = r#"[page mode=screen cols=10 rows=4]
+[animate id="fx" src="/effects/typewriter.wasm" fps=30 loop=false]
+  [pre]AB
+CD[/pre]
+[/animate]
+[/page]"#;
+        let mut scanner = crate::scanner::Scanner::new(src.as_bytes()).unwrap();
+        let tokens = scanner.scan_all().unwrap();
+        let doc = crate::parser::parse(tokens).document.unwrap();
+        let mut scene = crate::compositor::scene::build::from_document(&doc);
+        let color = crate::color::ColorSupport::Truecolor;
+        let wcfg = crate::compositor::layout::text::WidthConfig::default();
+        let layout =
+            crate::compositor::layout::engine::layout_scene(&mut scene, 10, 4, color, wcfg);
+        for placed in &layout.placed {
+            if placed.is_animation() && !placed.rect.is_empty() {
+                let node = scene.find_by_aml_id(&placed.id).unwrap();
+                scene.ensure_buffer(node, placed.rect.w, placed.rect.h);
+            }
+        }
+
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let runtime =
+            executor.block_on(AnimationRuntime::from_scene(&mut scene, color, wcfg, None));
+
+        assert!(runtime.animations.is_empty());
+        assert!(
+            runtime.build_notices.is_empty(),
+            "the drop is silent, which is what makes it dangerous"
+        );
+        assert!(!scene.resource_limit_exceeded());
+    }
+
     #[test]
     #[cfg_attr(miri, ignore = "1,025-region boundary is covered by native tests")]
     fn from_scene_enforces_runtime_animation_budgets_if_parser_errors_are_ignored() {
