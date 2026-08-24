@@ -426,7 +426,17 @@ impl HistoryEntry {
     }
 }
 
+/// Everything that can happen to a viewer: input, transport, and the
+/// completion of work the renderer was asked to do.
+///
+/// `#[non_exhaustive]` because the reducer grows a variant whenever the client
+/// learns to do something new -- [`ViewerEvent::RestoreCurrentEntry`] was the
+/// most recent, and adding it to a bare enum was a breaking change for a
+/// downstream `match` and so forced 0.4.0 on a release of three bug fixes.
+/// Matching inside this crate is unaffected: exhaustiveness is still checked
+/// here, so a new variant still has to be handled everywhere it matters.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ViewerEvent {
     InitialNavigation {
         uri: AtpUri,
@@ -596,7 +606,10 @@ pub enum ViewerEvent {
     Shutdown,
 }
 
+/// What the reducer asks the renderer to do. Paired with [`ViewerEvent`] and
+/// `#[non_exhaustive]` for the same reason.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ViewerEffect {
     Connect {
         owner: OperationOwner,

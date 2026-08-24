@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.4.0 - 2026-08-24
+
+### Changed
+
+- `ViewerEvent` and `ViewerEffect` are `#[non_exhaustive]`. Both are re-exported
+  at the `dustnet-client` root and the reducer gains a variant whenever the
+  client learns to do something new, so every such addition was a breaking
+  change for a downstream `match` -- which is what makes this release 0.4.0
+  rather than 0.3.2. Marking them now is itself the breaking part, and it is
+  cheapest in a release that already is one. Matching inside the crate is
+  unaffected: exhaustiveness is still checked there.
+- A refused ATP `ERROR` is reported in words rather than by code. The wire keeps
+  HTTP's numbers because a frame wants a compact discriminant with an existing
+  table behind it, but a reader has no such table and ATP is not HTTP, so
+  borrowing the numerals on screen implied a kinship that does not hold. `404`
+  now reads "the site has no page at this address"; a code the spec does not
+  define is reported verbatim rather than rounded to whichever category its
+  leading digit suggests.
+
+### Fixed
+
+- The client's failure page says why. It was a `const` naming one cause -- "this
+  page exceeded the client resource budget" -- and every client-side navigation
+  failure rendered it, because the renderer destructured
+  `ActivateErrorPage { message }` as `_message` and discarded the reason. A link
+  to a host nothing was listening on therefore reported a resource limit that had
+  not been reached. Only in-session navigation showed it: the first navigation
+  has its own path, which reports honestly, so the same dead address was
+  described one way when typed and another when followed. The reason is escaped
+  through `dustnet_core::serialize` rather than interpolated, because a server
+  picks the text of an `ERROR` frame, and bounded at 200 characters so the page
+  reporting a failure cannot become the next one.
+- Fetch failures name the address they were for. "Connection refused" alone does
+  not say what refused.
+- Dismissing a client-owned page -- a failure page, or the `:sessions` overlay --
+  no longer strips the WASM effects from the page underneath. The restore
+  re-laid-out the cached AML through a helper that supplies neither a module
+  directory nor a prepared batch, and an animation with no source for its `src=`
+  is skipped without an adapter, a build notice, or a scene error. On a page that
+  reveals content with `[on event="animation-end"]` the content went too, since
+  the events belonged to effects that were never built. The restore goes through
+  the reducer now, on the same path as any history step, so dependency discovery
+  and the resource fetch run. It also leaves the model correct, which the
+  shortcut did not: phase stayed `Failed`, the connection stayed `Disconnected`,
+  and `current_uri` still pointed at the address that had just failed.
+
 ## 0.3.1 - 2026-08-23
 
 ### Removed
