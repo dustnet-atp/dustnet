@@ -626,7 +626,7 @@ impl std::fmt::Display for ClientError {
         match self {
             ClientError::Protocol(e) => write!(f, "{e}"),
             ClientError::ServerError { code, message } => {
-                write!(f, "server error {code}: {message}")
+                write!(f, "{}: {message}", server_condition(*code))
             }
             ClientError::UnexpectedResponse(mt) => write!(f, "unexpected response: {mt:?}"),
             ClientError::ResourceTooLarge { size, max } => {
@@ -655,6 +655,32 @@ impl std::fmt::Display for ClientError {
 }
 
 impl std::error::Error for ClientError {}
+
+/// What an ERROR frame's code means, in words.
+///
+/// The wire keeps HTTP's numbers -- `docs/spec/02-protocol.md` lists them --
+/// because a frame wants a compact discriminant that an existing table already
+/// defines. A page wants the opposite: "404" is legible only to a reader who
+/// has that table memorised, and ATP is not HTTP, so borrowing its numerals on
+/// screen implies a kinship that does not hold. Every code the spec defines is
+/// named here, and the name is what a person is shown.
+///
+/// An unlisted code is reported as-is rather than guessed at from its leading
+/// digit. A server that invents a code has said something this client does not
+/// understand, and saying so is more honest than rounding it to a category.
+fn server_condition(code: u16) -> std::borrow::Cow<'static, str> {
+    use std::borrow::Cow;
+    match code {
+        400 => Cow::Borrowed("the site could not read the request"),
+        401 => Cow::Borrowed("this page needs you to sign in"),
+        403 => Cow::Borrowed("this page is not yours to read"),
+        404 => Cow::Borrowed("the site has no page at this address"),
+        429 => Cow::Borrowed("the site is limiting requests"),
+        500 => Cow::Borrowed("the site failed while answering"),
+        503 => Cow::Borrowed("the site is not answering right now"),
+        other => Cow::Owned(format!("the site refused with code {other}")),
+    }
+}
 
 impl From<ProtocolError> for ClientError {
     fn from(e: ProtocolError) -> Self {
@@ -3092,6 +3118,29 @@ mod tests {
             result,
             Err(ClientError::ServerError { code: 404, .. })
         ));
+    }
+
+    /// The wire keeps the number; the reader is not shown it. A code the spec
+    /// does not define is reported verbatim rather than rounded to whichever
+    /// category its leading digit suggests.
+    #[test]
+    fn error_codes_are_reported_as_words() {
+        let not_found = ClientError::ServerError {
+            code: 404,
+            message: "not found".into(),
+        };
+        assert_eq!(
+            not_found.to_string(),
+            "the site has no page at this address: not found"
+        );
+        assert!(!not_found.to_string().contains("404"));
+
+        for code in [400, 401, 403, 429, 500, 503] {
+            let named = server_condition(code);
+            assert!(!named.contains(&code.to_string()), "{code}: {named}");
+        }
+
+        assert_eq!(server_condition(418), "the site refused with code 418");
     }
 
     #[tokio::test]

@@ -190,7 +190,7 @@ async fn exhausted_origin_still_builds_independent_client_error_page() {
     )
     .await;
 
-    assert_eq!(page.scene.title.as_deref(), Some("Content blocked"));
+    assert_eq!(page.scene.title.as_deref(), Some("Page not shown"));
     assert!(!page.buf.allocation_failed());
     assert!(!page.governor.shares_budget_with(&hostile_governor));
     assert!(page.governor.used(ResourceCategory::CompositorCells) > 0);

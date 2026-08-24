@@ -422,7 +422,98 @@ struct LoadedPage {
     prepared_event_dispatcher: Option<EventDispatcher>,
 }
 
-const RESOURCE_ERROR_AML: &str = "[page mode=document title=\"Content blocked\"]\n[text bold fg=red]Content blocked by Dustnet[/text]\n[text]This page exceeded the client resource budget and was not displayed.[/text]\n[/page]";
+// ─── The client's own failure page ──────────────────────────
+//
+// Every client-side navigation failure ends here: a connection that was
+// refused, a server that answered ERROR, a page that would not parse, a budget
+// that ran out. The reducer already knows which — `fail_owned_operation` puts
+// the reason in `ActivateErrorPage` — and this module used to discard it and
+// render one fixed page saying the client resource budget was exceeded. A dead
+// link to a host nothing was listening on therefore reported a resource limit:
+// untrue, unactionable, and it named the one cause least likely to be the real
+// one. The `_message` binding in `navigation.rs` was the whole of the defect.
+//
+// The reason is rendered now, under two constraints.
+//
+// The detail is remote text, so it is escaped through `to_aml` rather than
+// interpolated between literal brackets — the reason `dustnet-core::serialize`
+// exists at all — and bounded, so the page that reports a failure cannot become
+// the next thing to fail.
+//
+// And it is words, not codes. ATP's ERROR frame carries HTTP's numbers on the
+// wire because a wire format wants a compact discriminant; a reader does not.
+// `ClientError::condition` names every one of them, and the name is what
+// reaches this page.
+
+/// Title of the client's failure page, and the line it leads with.
+const ERROR_PAGE_TITLE: &str = "Page not shown";
+const ERROR_PAGE_HEADING: &str = "Dustnet could not show this page";
+
+/// Longest failure detail that reaches the page.
+///
+/// A server picks the text of an ERROR frame, and this page is built by a
+/// client that may have just run out of something. `dustnet-server` bounds a
+/// refusal reason at the same figure and for the same reason.
+const MAX_ERROR_DETAIL: usize = 200;
+
+/// The failure page with its detail line left out.
+///
+/// [`to_aml`] fails only on a malformed tag or attribute *name*, and every name
+/// below is a literal, so reaching this is impossible rather than merely
+/// unlikely. It is a `const` all the same: this path runs when the client is
+/// already failing, which is the worst place to put an `expect`.
+const FALLBACK_ERROR_AML: &str = "[page mode=document title=\"Page not shown\"]\n[text bold fg=red]Dustnet could not show this page[/text]\n[/page]";
+
+/// Build the client's failure page, reporting `detail`.
+fn client_error_aml(detail: &str) -> String {
+    use dustnet_core::scanner::{Attribute, AttributeValue, Token};
+
+    fn attr(name: &str, value: &str) -> Attribute {
+        Attribute {
+            name: name.to_owned(),
+            value: AttributeValue::String(value.to_owned()),
+        }
+    }
+    fn flag(name: &str) -> Attribute {
+        Attribute {
+            name: name.to_owned(),
+            value: AttributeValue::Flag,
+        }
+    }
+    fn open(name: &str, attributes: Vec<Attribute>) -> Token {
+        Token::OpenTag {
+            name: name.to_owned(),
+            attributes,
+            self_closing: false,
+        }
+    }
+    fn close(name: &str) -> Token {
+        Token::CloseTag {
+            name: name.to_owned(),
+        }
+    }
+
+    // Cut on a character boundary. The detail can carry a server's UTF-8, and
+    // a byte-indexed truncation would panic on the day one arrives.
+    let detail = match detail.char_indices().nth(MAX_ERROR_DETAIL) {
+        Some((end, _)) => detail.get(..end).unwrap_or(detail),
+        None => detail,
+    };
+    let tokens = vec![
+        open(
+            "page",
+            vec![attr("mode", "document"), attr("title", ERROR_PAGE_TITLE)],
+        ),
+        open("text", vec![flag("bold"), attr("fg", "red")]),
+        Token::Text(ERROR_PAGE_HEADING.to_owned()),
+        close("text"),
+        open("text", Vec::new()),
+        Token::Text(detail.to_owned()),
+        close("text"),
+        close("page"),
+    ];
+    dustnet_core::serialize::to_aml(&tokens).unwrap_or_else(|_| FALLBACK_ERROR_AML.to_owned())
+}
 
 impl LoadedPage {
     fn panels(&self) -> impl Iterator<Item = &PlacedElement> {
@@ -866,8 +957,10 @@ async fn layout_page(
     {
         Ok(page) => page,
         Err(_) => {
-            let error =
-                parse_aml(RESOURCE_ERROR_AML).expect("built-in resource error AML must parse");
+            let error = parse_aml(&client_error_aml(
+                "This page exceeded the client resource budget and was not displayed.",
+            ))
+            .expect("built-in client error AML must parse");
             let mut page = layout_page_with_admission(
                 &error,
                 term_w,
@@ -2057,7 +2150,14 @@ impl TerminalRuntime {
                 let response = match attempt {
                     Ok(response) => response,
                     Err(error) => {
-                        let message = error.to_string();
+                        // Named against the URI, because this reason is the
+                        // whole of what the failure page can say and "connection
+                        // refused" on its own does not identify what refused.
+                        // The address is the actionable half when a link points
+                        // somewhere that never existed -- a template that was
+                        // deployed with its placeholder still holding a
+                        // loopback address, say.
+                        let message = format!("{uri} — {error}");
                         self.last_fetch_error = Some(message.clone());
                         return Ok(vec![LifecycleEvent::FetchFailed { owner, message }]);
                     }

@@ -11,7 +11,7 @@ pub(super) enum RendererRecoveryEffect {
     EvictHistory { message: String },
     ReleaseHistoryArtifact { id: crate::viewer::HistoryId },
     RetirePageWork { scope: PageScope },
-    ActivateErrorPage { _message: String },
+    ActivateErrorPage { message: String },
     RenderTerminal,
 }
 
@@ -35,9 +35,7 @@ pub(super) fn classify(effect: LifecycleEffect) -> ClassifiedEffect {
             ClassifiedEffect::Recovery(RendererRecoveryEffect::RetirePageWork { scope })
         }
         LifecycleEffect::ActivateErrorPage { message } => {
-            ClassifiedEffect::Recovery(RendererRecoveryEffect::ActivateErrorPage {
-                _message: message,
-            })
+            ClassifiedEffect::Recovery(RendererRecoveryEffect::ActivateErrorPage { message })
         }
         LifecycleEffect::RenderTerminal => {
             ClassifiedEffect::Recovery(RendererRecoveryEffect::RenderTerminal)
@@ -115,8 +113,8 @@ pub(super) async fn execute_renderer_recovery(
             runtime.activated_navigation.clear_scope(&scope);
             Ok(Vec::new())
         }
-        RendererRecoveryEffect::ActivateErrorPage { _message: _ } => {
-            let doc = parse_aml(RESOURCE_ERROR_AML).ok_or(ViewerError::ParseFailed)?;
+        RendererRecoveryEffect::ActivateErrorPage { message } => {
+            let doc = parse_aml(&client_error_aml(&message)).ok_or(ViewerError::ParseFailed)?;
             let mut page = layout_page_with_admission(
                 &doc,
                 runtime.state.term_w,
@@ -1575,5 +1573,69 @@ mod tests {
         assert!(runtime.local_page_activated);
         assert_eq!(runtime.last_local_page_aml_ptr, Some(aml_ptr));
         assert_eq!(runtime.page.scene.title.as_deref(), Some("Cached"));
+    }
+
+    /// The reason the reducer supplies is what the page says. The regression
+    /// this guards is not a missing string but a wrong one: the page used to
+    /// be a `const` naming the resource budget, so a refused connection
+    /// reported a limit that had not been reached.
+    #[test]
+    fn failure_page_reports_the_reason_it_was_given() {
+        let aml = client_error_aml("atp://hub.example:1987/ — I/O error: Connection refused");
+
+        assert!(aml.contains("Connection refused"), "{aml}");
+        assert!(aml.contains("hub.example:1987"), "{aml}");
+        assert!(
+            !aml.contains("resource budget"),
+            "the fixed budget wording must not survive: {aml}"
+        );
+        assert!(parse_aml(&aml).is_some(), "{aml}");
+    }
+
+    /// A server picks the text of an ERROR frame, so the detail is remote
+    /// input on a page the client owns. It goes through `to_aml`, which means
+    /// a forged tag arrives as characters rather than as markup on an origin
+    /// the reader has no reason to distrust.
+    #[test]
+    fn hostile_detail_is_escaped_rather_than_parsed() {
+        let aml = client_error_aml(r#"[form action="/login"][input name="password"][/form]"#);
+
+        // Scanned rather than string-matched: `[[form` contains `[form`, so a
+        // substring test passes whether or not the escape is there. What
+        // matters is that no `form` tag comes back out.
+        let tokens = dustnet_core::scanner::Scanner::new(aml.as_bytes())
+            .unwrap()
+            .scan_all()
+            .unwrap();
+        let tags: Vec<&str> = tokens
+            .iter()
+            .filter_map(|token| match token {
+                dustnet_core::scanner::Token::OpenTag { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(tags, ["page", "text", "text"], "{aml}");
+        assert!(
+            tokens.iter().any(|token| matches!(
+                token,
+                dustnet_core::scanner::Token::Text(text)
+                    if text.contains(r#"[form action="/login"]"#)
+            )),
+            "the forged tag must survive as text: {aml}"
+        );
+    }
+
+    /// The page that reports a failure must not be able to become the next
+    /// one. Truncation is by character rather than byte, so a server whose
+    /// message is multi-byte cannot panic the client that renders it.
+    #[test]
+    fn overlong_detail_is_cut_on_a_character_boundary() {
+        let detail = "é".repeat(MAX_ERROR_DETAIL * 4);
+        let aml = client_error_aml(&detail);
+
+        assert!(aml.contains(&"é".repeat(MAX_ERROR_DETAIL)), "{aml}");
+        assert!(!aml.contains(&"é".repeat(MAX_ERROR_DETAIL + 1)), "{aml}");
+        assert!(parse_aml(&aml).is_some(), "{aml}");
     }
 }
